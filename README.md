@@ -15,13 +15,13 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 
 ## Démarrage
 
+Toute la configuration (ports, mot de passe base de données, `JWT_SECRET`, identifiants admin) est définie directement dans `docker-compose.yml` — il n'y a pas de fichier `.env` à créer. Éditez les valeurs dans `docker-compose.yml` avant le premier démarrage (au minimum `POSTGRES_PASSWORD`, `JWT_SECRET` et `ADMIN_PASSWORD`), puis :
+
 ```bash
-cp .env.example .env
-# éditer .env : mot de passe DB, JWT_SECRET, identifiants admin par défaut
 docker compose up -d --build
 ```
 
-Ports par défaut (modifiables dans `.env`) :
+Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
 | Service   | Port hôte |
 |-----------|-----------|
@@ -31,7 +31,9 @@ Ports par défaut (modifiables dans `.env`) :
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (par défaut `admin@presencia.local` / `ChangeMe123!`). **Changez ce mot de passe après la première connexion** (aucune page de changement de mot de passe en libre-service n'est fournie côté cadre ; un administrateur peut réinitialiser le mot de passe de n'importe quel compte depuis l'onglet Utilisateurs).
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `docker-compose.yml` (par défaut `admin@presencia.local` / `ChangeMe123!`). **Changez ce mot de passe après la première connexion** (aucune page de changement de mot de passe en libre-service n'est fournie côté cadre ; un administrateur peut réinitialiser le mot de passe de n'importe quel compte depuis l'onglet Utilisateurs).
+
+Si vous changez les identifiants admin dans `docker-compose.yml` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
 ## Utilisation
 
