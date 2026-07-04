@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Presencia — Gestion des présences</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="toast-container" class="toast-container"></div>
+
+<!-- LOGIN VIEW -->
+<section id="view-login" class="login-screen">
+  <div class="login-card">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">Presencia</span>
+    </div>
+    <p class="login-subtitle">Gestion des présences par société</p>
+    <form id="login-form" autocomplete="on">
+      <label class="field">
+        <span>Adresse e-mail</span>
+        <input type="email" id="login-email" required autocomplete="username" placeholder="vous@societe.com" />
+      </label>
+      <label class="field">
+        <span>Mot de passe</span>
+        <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" />
+      </label>
+      <div id="login-error" class="form-error" hidden></div>
+      <button type="submit" class="btn btn-primary btn-block">Se connecter</button>
+    </form>
+    <p class="login-hint">Accès réservé — comptes créés par l'administrateur.</p>
+  </div>
+</section>
+
+<!-- MAIN APP -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">Presencia</span>
+    </div>
+    <nav id="admin-nav" class="topbar-nav" hidden>
+      <button class="nav-btn" data-view="calendar" data-admin-mode="own">Mon planning</button>
+      <button class="nav-btn" data-view="companies">Sociétés</button>
+      <button class="nav-btn" data-view="users">Utilisateurs</button>
+      <button class="nav-btn" data-view="plannings">Plannings</button>
+      <button class="nav-btn" data-view="validation">Validation &amp; export</button>
+    </nav>
+    <div class="topbar-user">
+      <div class="user-chip">
+        <span id="user-name" class="user-name"></span>
+        <span id="user-role" class="user-role-badge"></span>
+      </div>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Déconnexion</button>
+    </div>
+  </header>
+
+  <main class="main">
+
+    <!-- CALENDAR VIEW (cadre self, or admin viewing a cadre) -->
+    <section id="view-calendar" class="view">
+      <div class="calendar-header">
+        <div class="calendar-title-group">
+          <h1 id="calendar-owner-name">Mon planning</h1>
+          <div class="month-nav">
+            <button id="prev-month" class="icon-btn" aria-label="Mois précédent">‹</button>
+            <span id="month-label" class="month-label"></span>
+            <button id="next-month" class="icon-btn" aria-label="Mois suivant">›</button>
+          </div>
+        </div>
+        <div id="validation-banner" class="validation-banner"></div>
+      </div>
+
+      <div class="legend">
+        <span class="legend-item"><i class="dot dot-present"></i>Présent</span>
+        <span class="legend-item"><i class="dot dot-absent"></i>Absent</span>
+        <span class="legend-item"><i class="dot dot-conge"></i>Congé</span>
+        <span class="legend-item"><i class="dot dot-rtt"></i>RTT</span>
+        <span class="legend-item"><i class="dot dot-empty"></i>Non renseigné</span>
+      </div>
+
+      <div class="calendar-weekdays">
+        <span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span>
+      </div>
+      <div id="calendar-grid" class="calendar-grid"></div>
+
+      <div id="calendar-actions" class="calendar-actions">
+        <button id="validate-month-btn" class="btn btn-primary">Valider mon mois</button>
+      </div>
+    </section>
+
+    <!-- COMPANIES VIEW (admin) -->
+    <section id="view-companies" class="view" hidden>
+      <div class="view-header">
+        <h1>Sociétés</h1>
+        <button id="add-company-btn" class="btn btn-primary">+ Nouvelle société</button>
+      </div>
+      <div class="card">
+        <table class="data-table">
+          <thead><tr><th>Nom</th><th>Cadres actifs</th><th>Créée le</th><th></th></tr></thead>
+          <tbody id="companies-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- USERS VIEW (admin) -->
+    <section id="view-users" class="view" hidden>
+      <div class="view-header">
+        <h1>Utilisateurs</h1>
+        <button id="add-user-btn" class="btn btn-primary">+ Nouvel utilisateur</button>
+      </div>
+      <div class="card">
+        <div class="filter-row">
+          <label>Société :
+            <select id="users-filter-company"><option value="">Toutes</option></select>
+          </label>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Société</th><th>Statut</th><th></th></tr></thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- PLANNINGS VIEW (admin browses any cadre calendar) -->
+    <section id="view-plannings" class="view" hidden>
+      <div class="view-header"><h1>Plannings</h1></div>
+      <div class="card selector-card">
+        <label>Société :
+          <select id="plannings-company-select"></select>
+        </label>
+        <label>Cadre :
+          <select id="plannings-cadre-select"></select>
+        </label>
+        <button id="plannings-view-btn" class="btn btn-primary">Afficher le planning</button>
+      </div>
+    </section>
+
+    <!-- VALIDATION & EXPORT VIEW (admin) -->
+    <section id="view-validation" class="view" hidden>
+      <div class="view-header"><h1>Validation &amp; export mensuel</h1></div>
+      <div class="card selector-card">
+        <label>Société :
+          <select id="validation-company-select"></select>
+        </label>
+        <label>Mois :
+          <select id="validation-month-select"></select>
+        </label>
+        <label>Année :
+          <select id="validation-year-select"></select>
+        </label>
+        <button id="validation-load-btn" class="btn btn-primary">Afficher</button>
+      </div>
+
+      <div id="validation-summary-card" class="card" hidden>
+        <div class="validation-summary-header">
+          <div>
+            <h2 id="validation-company-title"></h2>
+            <p id="validation-status-text" class="muted"></p>
+          </div>
+          <div class="validation-summary-actions">
+            <button id="validate-company-btn" class="btn btn-primary">Valider la société</button>
+            <button id="reopen-company-btn" class="btn btn-outline">Réouvrir</button>
+          </div>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Cadre</th><th>Statut</th><th>Validé le</th><th></th></tr></thead>
+          <tbody id="validation-cadres-tbody"></tbody>
+        </table>
+        <div class="export-row">
+          <span>Export :</span>
+          <button id="export-pdf-btn" class="btn btn-outline">Télécharger PDF</button>
+          <button id="export-excel-btn" class="btn btn-outline">Télécharger Excel</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- STATUS POPOVER (day half-cell picker) -->
+<div id="status-popover" class="popover" hidden>
+  <div class="popover-title" id="popover-title"></div>
+  <button class="popover-option" data-status="present"><i class="dot dot-present"></i>Présent</button>
+  <button class="popover-option" data-status="absent"><i class="dot dot-absent"></i>Absent</button>
+  <button class="popover-option" data-status="conge"><i class="dot dot-conge"></i>Congé</button>
+  <button class="popover-option" data-status="rtt"><i class="dot dot-rtt"></i>RTT</button>
+  <button class="popover-option popover-clear" data-status="">Effacer</button>
+</div>
+
+<!-- GENERIC MODAL -->
+<div id="modal-backdrop" class="modal-backdrop" hidden>
+  <div class="modal" id="modal-box"></div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
