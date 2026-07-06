@@ -1,6 +1,7 @@
 (() => {
   'use strict';
 
+  const WEEKDAY_SHORT = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
   const MONTH_NAMES = [
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
@@ -224,7 +225,7 @@
 
       const num = document.createElement('div');
       num.className = 'day-number';
-      num.textContent = d;
+      num.innerHTML = `<span class="day-weekday-mobile">${WEEKDAY_SHORT[dateObj.getDay()]}</span> ${d}`;
       cell.appendChild(num);
 
       const row = document.createElement('div');
@@ -258,10 +259,24 @@
     popoverTarget = half;
     const label = half.dataset.period === 'AM' ? 'Matin' : 'Après-midi';
     document.getElementById('popover-title').textContent = `${half.dataset.date} — ${label}`;
-    const rect = half.getBoundingClientRect();
-    popover.style.top = `${window.scrollY + rect.bottom + 6}px`;
-    popover.style.left = `${window.scrollX + rect.left}px`;
+
     popover.hidden = false;
+    const rect = half.getBoundingClientRect();
+    const popRect = popover.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const margin = 8;
+
+    let top = window.scrollY + rect.bottom + 6;
+    if (rect.bottom + popRect.height + margin > viewportHeight) {
+      top = window.scrollY + rect.top - popRect.height - 6;
+    }
+    let left = window.scrollX + rect.left;
+    const maxLeft = window.scrollX + viewportWidth - popRect.width - margin;
+    left = Math.min(left, Math.max(window.scrollX + margin, maxLeft));
+
+    popover.style.top = `${Math.max(window.scrollY + margin, top)}px`;
+    popover.style.left = `${left}px`;
   });
 
   document.addEventListener('click', (e) => {

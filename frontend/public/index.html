@@ -98,10 +98,12 @@
         <button id="add-company-btn" class="btn btn-primary">+ Nouvelle société</button>
       </div>
       <div class="card">
-        <table class="data-table">
-          <thead><tr><th>Nom</th><th>Cadres actifs</th><th>Créée le</th><th></th></tr></thead>
-          <tbody id="companies-tbody"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Nom</th><th>Cadres actifs</th><th>Créée le</th><th></th></tr></thead>
+            <tbody id="companies-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -117,10 +119,12 @@
             <select id="users-filter-company"><option value="">Toutes</option></select>
           </label>
         </div>
-        <table class="data-table">
-          <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Société</th><th>Statut</th><th></th></tr></thead>
-          <tbody id="users-tbody"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Société</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -165,10 +169,12 @@
             <button id="reopen-company-btn" class="btn btn-outline">Réouvrir</button>
           </div>
         </div>
-        <table class="data-table">
-          <thead><tr><th>Cadre</th><th>Statut</th><th>Validé le</th><th></th></tr></thead>
-          <tbody id="validation-cadres-tbody"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Cadre</th><th>Statut</th><th>Validé le</th><th></th></tr></thead>
+            <tbody id="validation-cadres-tbody"></tbody>
+          </table>
+        </div>
         <div class="export-row">
           <span>Export :</span>
           <button id="export-pdf-btn" class="btn btn-outline">Télécharger PDF</button>
