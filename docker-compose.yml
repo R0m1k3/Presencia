@@ -45,5 +45,10 @@ services:
     ports:
       - "8781:80"
 
+networks:
+  default:
+    name: nginx_default
+    external: true
+
 volumes:
   presencia_pgdata:
