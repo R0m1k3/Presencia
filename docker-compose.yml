@@ -1,5 +1,5 @@
 services:
-  db:
+  presencia-db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -16,15 +16,15 @@ services:
       timeout: 5s
       retries: 10
 
-  backend:
+  presencia-backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
-      db:
+      presencia-db:
         condition: service_healthy
     environment:
       PORT: 4790
-      PGHOST: db
+      PGHOST: presencia-db
       PGPORT: 5432
       PGUSER: presencia
       PGPASSWORD: R4dsITu0vuigNQQwNlvj0agVyHupSyX
@@ -37,11 +37,11 @@ services:
     ports:
       - "4790:4790"
 
-  frontend:
+  presencia-frontend:
     build: ./frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - presencia-backend
     ports:
       - "8781:80"
 
