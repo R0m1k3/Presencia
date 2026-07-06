@@ -75,7 +75,7 @@ async function buildCompanyWorkbook({ companyName, year, month, cadres }) {
   }
 
   const legendRowIdx = sheet.rowCount + 2;
-  sheet.getCell(legendRowIdx, 1).value = 'Légende : P = Présent · A = Absent · CP = Congé · RTT = RTT';
+  sheet.getCell(legendRowIdx, 1).value = 'Légende : P = Présent · NP = Non-présent · CP = Congé · RTT = RTT';
   sheet.getCell(legendRowIdx, 1).font = { italic: true, size: 9 };
 
   return workbook;

@@ -117,6 +117,61 @@ router.put('/', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Bulk upsert (e.g. « fill all empty weekdays with présent »). All entries
+// must pass the same lock checks as single writes; months are checked once
+// per distinct month present in the payload.
+router.put('/bulk', async (req, res) => {
+  const { entries, user_id: requestedUserId } = req.body || {};
+  if (!Array.isArray(entries) || entries.length === 0 || entries.length > 200) {
+    return res.status(400).json({ error: 'Paramètres invalides' });
+  }
+  for (const e of entries) {
+    if (!e || !e.date || !PERIODS.includes(e.period) || !STATUSES.includes(e.status)) {
+      return res.status(400).json({ error: 'Paramètres invalides' });
+    }
+  }
+  if (requestedUserId && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  const target = await getTargetUser(req, requestedUserId);
+  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+  const months = new Set(entries.map((e) => e.date.slice(0, 7)));
+  for (const ym of months) {
+    const [year, month] = ym.split('-').map(Number);
+    const lock = await getMonthLock(target.id, year, month);
+    const companyValidation = await getCompanyValidation(target.company_id, year, month);
+    if (companyValidation.admin_validated) {
+      return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
+    }
+    if (req.user.role !== 'admin' && lock.cadre_validated) {
+      return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
+    }
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const e of entries) {
+      await client.query(
+        `INSERT INTO attendance_entries (user_id, entry_date, period, status, updated_at)
+         VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (user_id, entry_date, period)
+         DO UPDATE SET status = EXCLUDED.status, updated_at = now()`,
+        [target.id, e.date, e.period, e.status]
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json({ ok: true, count: entries.length });
+});
+
 router.delete('/', async (req, res) => {
   const { date, period, user_id: requestedUserId } = req.body || {};
   if (!date || !PERIODS.includes(period)) {

@@ -6,7 +6,7 @@
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
   ];
-  const STATUS_LABELS = { present: 'Présent', absent: 'Absent', conge: 'Congé', rtt: 'RTT' };
+  const STATUS_LABELS = { present: 'Présent', absent: 'Non-présent', conge: 'Congé', rtt: 'RTT' };
 
   const state = {
     user: null,
@@ -69,7 +69,7 @@
     document.getElementById('view-login').hidden = true;
     document.getElementById('app').hidden = false;
     document.getElementById('user-name').textContent = user.fullName;
-    document.getElementById('user-role').textContent = user.role === 'admin' ? 'Administrateur' : (user.companyName || 'Cadre');
+    document.getElementById('user-role-badge').textContent = user.role === 'admin' ? 'Administrateur' : (user.companyName || 'Cadre');
 
     const now = new Date();
     state.cal.year = now.getFullYear();
@@ -197,9 +197,25 @@
       actionsBox.hidden = false;
       validateBtn.disabled = data.cadreValidated || data.companyValidated;
       validateBtn.textContent = data.cadreValidated ? 'Mois déjà validé' : 'Valider mon mois';
+      document.getElementById('fill-workdays-btn').hidden = !data.editable;
     } else {
       actionsBox.hidden = true;
     }
+
+    // monthly totals (half-days per status)
+    const counts = { present: 0, absent: 0, conge: 0, rtt: 0 };
+    data.entries.forEach((e) => { if (counts[e.status] !== undefined) counts[e.status]++; });
+    document.getElementById('month-summary').innerHTML = ['present', 'absent', 'conge', 'rtt']
+      .map((s) => `
+        <div class="summary-tile summary-${s}">
+          <span class="summary-count">${counts[s]}</span>
+          <span class="summary-label">${STATUS_LABELS[s]}</span>
+        </div>`)
+      .join('') + `
+        <div class="summary-tile summary-note">
+          <span class="summary-count">${data.entries.length}</span>
+          <span class="summary-label">demi-journées saisies</span>
+        </div>`;
 
     const firstOfMonth = new Date(year, month - 1, 1);
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -215,13 +231,15 @@
     }
 
     const editable = data.editable;
+    const now = new Date();
+    const todayDay = now.getFullYear() === year && now.getMonth() + 1 === month ? now.getDate() : null;
     for (let d = 1; d <= daysInMonth; d++) {
       const dateObj = new Date(year, month - 1, d);
       const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
 
       const cell = document.createElement('div');
-      cell.className = 'day-cell' + (isWeekend ? ' weekend' : '');
+      cell.className = 'day-cell' + (isWeekend ? ' weekend' : '') + (d === todayDay ? ' today' : '');
 
       const num = document.createElement('div');
       num.className = 'day-number';
@@ -312,6 +330,34 @@
     try {
       await api('/validations/cadre', { method: 'POST', body: { year: state.cal.year, month: state.cal.month } });
       toast('Mois validé avec succès', 'success');
+      await loadCalendar();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
+  document.getElementById('fill-workdays-btn').addEventListener('click', async () => {
+    const { year, month, data } = state.cal;
+    if (!data) return;
+    const filled = new Set(data.entries.map((e) => `${e.date}:${e.period}`));
+    const entries = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(year, month - 1, d).getDay();
+      if (dow === 0 || dow === 6) continue; // week-ends exclus
+      const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      for (const period of ['AM', 'PM']) {
+        if (!filled.has(`${iso}:${period}`)) entries.push({ date: iso, period, status: 'present' });
+      }
+    }
+    if (entries.length === 0) {
+      toast('Tous les jours ouvrés sont déjà renseignés', 'info');
+      return;
+    }
+    if (!confirm(`Renseigner ${entries.length} demi-journées vides en « Présent » ? Les saisies existantes ne seront pas modifiées.`)) return;
+    try {
+      await api('/attendance/bulk', { method: 'PUT', body: { entries } });
+      toast(`${entries.length} demi-journées renseignées`, 'success');
       await loadCalendar();
     } catch (err) {
       toast(err.message, 'error');

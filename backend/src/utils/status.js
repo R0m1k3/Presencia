@@ -1,13 +1,13 @@
 const STATUS_LABELS = {
   present: 'Présent',
-  absent: 'Absent',
+  absent: 'Non-présent',
   conge: 'Congé',
   rtt: 'RTT',
 };
 
 const STATUS_CODES = {
   present: 'P',
-  absent: 'A',
+  absent: 'NP',
   conge: 'CP',
   rtt: 'RTT',
 };

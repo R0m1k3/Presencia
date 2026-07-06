@@ -81,7 +81,7 @@ function buildCompanyPdf({ companyName, year, month, cadres }) {
       y = 40;
     }
     doc.fontSize(10).fillColor('#111').text(
-      `Total demi-journées — Présent: ${counts.present}  ·  Absent: ${counts.absent}  ·  Congé: ${counts.conge}  ·  RTT: ${counts.rtt}`,
+      `Total demi-journées — Présent: ${counts.present}  ·  Non-présent: ${counts.absent}  ·  Congé: ${counts.conge}  ·  RTT: ${counts.rtt}`,
       startX,
       y
     );
