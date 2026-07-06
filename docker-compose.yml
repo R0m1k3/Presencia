@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: presencia
-      POSTGRES_PASSWORD: presencia_change_me
+      POSTGRES_PASSWORD: R4dsITu0vuigNQQwNlvj0agVyHupSyX
       POSTGRES_DB: presencia
     volumes:
       - presencia_pgdata:/var/lib/postgresql/data
@@ -31,9 +31,9 @@ services:
       PGDATABASE: presencia
       JWT_SECRET: change-me-to-a-long-random-string
       COOKIE_SECURE: "false"
-      ADMIN_EMAIL: admin@presencia.local
-      ADMIN_PASSWORD: ChangeMe123!
-      ADMIN_NAME: Administrateur
+      ADMIN_EMAIL: michaelschal@ffest.fr
+      ADMIN_PASSWORD: Lapîn2509
+      ADMIN_NAME: Michael
     ports:
       - "4790:4790"
 
