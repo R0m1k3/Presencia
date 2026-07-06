@@ -27,7 +27,7 @@ services:
       PGHOST: db
       PGPORT: 5432
       PGUSER: presencia
-      PGPASSWORD: presencia_change_me
+      PGPASSWORD: R4dsITu0vuigNQQwNlvj0agVyHupSyX
       PGDATABASE: presencia
       JWT_SECRET: change-me-to-a-long-random-string
       COOKIE_SECURE: "false"
