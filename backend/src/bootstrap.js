@@ -8,16 +8,20 @@ function sleep(ms) {
 }
 
 async function waitForDb(retries = 30, delayMs = 2000) {
+  let lastErr = null;
   for (let i = 0; i < retries; i++) {
     try {
       await db.query('SELECT 1');
       return;
     } catch (err) {
-      console.log(`En attente de la base de données... (${i + 1}/${retries})`);
+      lastErr = err;
+      console.log(`En attente de la base de données... (${i + 1}/${retries}) — ${err.message}`);
       await sleep(delayMs);
     }
   }
-  throw new Error('Impossible de se connecter à la base de données');
+  throw new Error(
+    `Impossible de se connecter à la base de données : ${lastErr ? lastErr.message : 'raison inconnue'}`
+  );
 }
 
 async function runMigrations() {
