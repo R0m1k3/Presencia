@@ -81,12 +81,20 @@
 
   // ── auth ────────────────────────────────────────────────────────────────
   async function boot() {
+    let me;
     try {
-      const me = await api('/auth/me');
-      await onLogin(me);
+      me = await api('/auth/me');
     } catch (e) {
+      // No usable session — show the login screen. Any other failure below
+      // must not bounce the user back here.
       $('view-login').hidden = false;
       $('app').hidden = true;
+      return;
+    }
+    try {
+      await onLogin(me);
+    } catch (err) {
+      toast(`Erreur au chargement de l’application : ${err.message}`, 'error');
     }
   }
 
@@ -100,7 +108,18 @@
     $('user-meta').textContent = user.role === 'admin'
       ? 'Administrateur'
       : `Cadre · ${user.companyName || '—'}`;
-    if (user.role === 'admin') await loadCompanies();
+
+    // The company list is only needed to populate selects. If it fails, the
+    // app must still come up with a usable navigation and a visible error —
+    // never a blank shell.
+    if (user.role === 'admin') {
+      try {
+        await loadCompanies();
+      } catch (err) {
+        state.companies = [];
+        toast(`Chargement des sociétés impossible : ${err.message}`, 'error');
+      }
+    }
     renderNav();
     await go('dashboard');
   }
@@ -109,15 +128,23 @@
     e.preventDefault();
     const errBox = $('login-error');
     errBox.hidden = true;
+    let user;
     try {
-      const user = await api('/auth/login', {
+      user = await api('/auth/login', {
         method: 'POST',
         body: { email: $('login-email').value.trim(), password: $('login-password').value },
       });
-      await onLogin(user);
     } catch (err) {
       errBox.textContent = err.message || 'Connexion impossible';
       errBox.hidden = false;
+      return;
+    }
+    // Past this point the login screen is gone, so its error box would be
+    // invisible: report anything that goes wrong as a toast instead.
+    try {
+      await onLogin(user);
+    } catch (err) {
+      toast(`Erreur au chargement de l’application : ${err.message}`, 'error');
     }
   });
 
@@ -227,7 +254,27 @@
     const workHalves = workdayHalves();
 
     if (isAdmin) {
-      const ov = await api(`/validations/overview?year=${state.y}&month=${state.m}`);
+      let ov;
+      try {
+        ov = await api(`/validations/overview?year=${state.y}&month=${state.m}`);
+      } catch (err) {
+        // A 404 here means the API is older than this page (backend image not
+        // rebuilt). Say so plainly rather than leaving the dashboard blank.
+        if (err.status === 404) {
+          toast('API incomplète : reconstruisez aussi l’image du backend.', 'error');
+        } else {
+          toast(err.message, 'error');
+        }
+        $('dash-subtitle').textContent = `Vue d'ensemble de ${monthLabel()} indisponible.`;
+        tiles([{ label: 'Ma saisie', value: `${counts.filled}/${workHalves}`, hint: 'demi-journées ouvrées' }]);
+        rowActions([{
+          icon: 'ph-calendar-dots', title: 'Compléter mon propre planning',
+          detail: `${Math.max(0, workHalves - counts.filled)} demi-journées manquantes`, tag: 'Saisie',
+          onClick: () => go('planning'),
+        }]);
+        renderCompanyMonthRows([]);
+        return;
+      }
       setNavBadge('validation', ov.pendingCompanies || 0);
       $('dash-subtitle').textContent =
         `Vue d'ensemble de ${monthLabel()} — ${ov.companies.length} société(s), ${ov.totalActiveCadres} cadre(s).`;
