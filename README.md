@@ -6,11 +6,15 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 
 - **Connexion uniquement** : aucune inscription publique. Tous les comptes (admin et cadres) sont créés par un administrateur.
 - **Multi-sociétés** : chaque cadre est rattaché à une société. L'administrateur voit toutes les sociétés et tous les plannings ; un cadre ne voit que le sien.
-- **Planning mensuel** : vue calendrier, clic sur une demi-journée (matin/après-midi) pour choisir : Présent, Absent, Congé, RTT.
+- **Tableau de bord** adapté au rôle : compteurs du mois et raccourcis « à faire maintenant » (sociétés prêtes à valider, cadres en retard, saisie à compléter).
+- **Planning mensuel** : clic sur une demi-journée (matin/après-midi) pour choisir Présent, Non-présent, Congé ou RTT. Trois affichages au choix (grille, compact, liste), **saisie rapide au pinceau** (on active un statut puis on peint les cases), **raccourcis clavier** dans le sélecteur (1–4 pour les statuts, ⌫ pour effacer, ↵ pour appliquer à la journée entière), et deux actions groupées : « Remplir les jours ouvrés » et « Tout effacer ».
 - **Validation de fin de mois en deux temps** :
   1. Chaque cadre **valide son propre mois** (verrouille ses saisies).
   2. Une fois **tous les cadres d'une société** validés, l'administrateur **valide la société** pour ce mois (verrouillage complet). L'administrateur peut réouvrir un mois cadre ou une société en cas de correction nécessaire.
+- **Historique** : chaque cadre retrouve ses mois précédents avec les totaux par statut.
 - **Export** PDF et Excel par société et par mois (détail par cadre, jour et demi-journée).
+- **Interface mobile** : sous 900 px, le calendrier devient une liste verticale, la navigation passe en barre basse et les cibles tactiles font 44 px.
+- **Aucune dépendance externe au chargement** : la police (Inter) et les icônes (Phosphor) sont servies par l'application elle-même — aucune requête vers un CDN ou vers Google Fonts.
 - **Docker** : Postgres + API Node/Express + frontend Nginx, sur des ports non standards.
 
 ## Démarrage
@@ -46,16 +50,31 @@ Si vous changez les identifiants admin dans `docker-compose.yml` *après* un pre
 
 ### En tant que cadre
 
-- Renseigner sa présence par demi-journée sur le mois en cours (ou les mois précédents/suivants).
-- En fin de mois, cliquer sur **"Valider mon mois"** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
+- Renseigner sa présence par demi-journée sur le mois en cours (ou les mois précédents/suivants). Le plus rapide : cliquer **« Remplir les jours ouvrés »** puis ne corriger que les exceptions (congés, RTT, absences).
+- Pour saisir plusieurs cases d'affilée, activer un statut dans **Saisie rapide** : chaque clic applique directement ce statut, sans passer par le sélecteur.
+- Dans le sélecteur d'une demi-journée : touches **1** à **4** pour les statuts, **⌫** pour effacer, **↵** pour appliquer à la journée entière.
+- En fin de mois, cliquer sur **« Valider mon mois »** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
+- **Historique** : retrouver les mois précédents et leurs totaux, et les rouvrir en lecture.
 
 ## Architecture technique
 
 ```
 backend/    API Node.js / Express, PostgreSQL (pg), auth par cookie JWT httpOnly
 frontend/   Page HTML unique (vanilla JS), servie par Nginx qui proxifie /api vers le backend
+  public/css/styles.css     tokens et composants du design system (Nocturne)
+  public/css/presencia.css  couche applicative du design (calendrier, navigation, statuts)
+  public/css/app.css        glue : mises en page que la maquette exprimait en styles inline
+  public/css/inter.css      police Inter, servie localement
+  public/css/phosphor.css   sous-ensemble des 18 icônes utilisées, servi localement
 docker-compose.yml
 ```
+
+`styles.css` et `presencia.css` proviennent du projet Claude Design et sont à
+remplacer tels quels lors d'une nouvelle exportation du design ; les
+adaptations propres à l'application vivent dans `app.css` pour que cette
+réimportation reste triviale. Seule modification apportée à `styles.css` :
+l'`@import` vers Google Fonts a été retiré au profit de `inter.css` servi
+localement.
 
 ### Modèle de données (PostgreSQL)
 

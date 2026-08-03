@@ -65,14 +65,19 @@ router.get('/company/:companyId', requireAdmin, async (req, res) => {
   const companyId = req.params.companyId;
   if (!year || !month) return res.status(400).json({ error: 'year et month requis' });
 
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
   const { rows: cadres } = await db.query(
     `SELECT u.id, u.full_name, u.email,
-            ml.cadre_validated, ml.cadre_validated_at
+            ml.cadre_validated, ml.cadre_validated_at,
+            COUNT(ae.id) AS filled
      FROM users u
      LEFT JOIN month_locks ml ON ml.user_id = u.id AND ml.year = $2 AND ml.month = $3
+     LEFT JOIN attendance_entries ae ON ae.user_id = u.id
+       AND ae.entry_date >= $4::date AND ae.entry_date < ($4::date + INTERVAL '1 month')
      WHERE u.company_id = $1 AND u.role = 'cadre' AND u.active = true
+     GROUP BY u.id, ml.cadre_validated, ml.cadre_validated_at
      ORDER BY u.full_name`,
-    [companyId, year, month]
+    [companyId, year, month, start]
   );
 
   const { rows: cv } = await db.query(
@@ -86,12 +91,49 @@ router.get('/company/:companyId', requireAdmin, async (req, res) => {
       id: c.id,
       fullName: c.full_name,
       email: c.email,
+      filled: parseInt(c.filled, 10),
       cadreValidated: !!c.cadre_validated,
       cadreValidatedAt: c.cadre_validated_at,
     })),
     allCadresValidated: cadres.length > 0 && cadres.every((c) => c.cadre_validated),
     companyValidated: !!cv[0]?.admin_validated,
     companyValidatedAt: cv[0]?.admin_validated_at || null,
+  });
+});
+
+// Admin: one-shot overview of every company for a given month (dashboard).
+router.get('/overview', requireAdmin, async (req, res) => {
+  const year = parseInt(req.query.year, 10);
+  const month = parseInt(req.query.month, 10);
+  if (!year || !month) return res.status(400).json({ error: 'year et month requis' });
+
+  const { rows } = await db.query(
+    `SELECT c.id, c.name,
+            COUNT(u.id) FILTER (WHERE u.id IS NOT NULL) AS active_cadres,
+            COUNT(u.id) FILTER (WHERE ml.cadre_validated) AS validated_cadres,
+            BOOL_OR(cmv.admin_validated) AS company_validated
+     FROM companies c
+     LEFT JOIN users u ON u.company_id = c.id AND u.role = 'cadre' AND u.active = true
+     LEFT JOIN month_locks ml ON ml.user_id = u.id AND ml.year = $1 AND ml.month = $2
+     LEFT JOIN company_month_validations cmv ON cmv.company_id = c.id AND cmv.year = $1 AND cmv.month = $2
+     GROUP BY c.id
+     ORDER BY c.name`,
+    [year, month]
+  );
+
+  const companies = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    activeCadres: parseInt(r.active_cadres, 10),
+    validatedCadres: parseInt(r.validated_cadres, 10),
+    companyValidated: !!r.company_validated,
+  }));
+
+  res.json({
+    companies,
+    totalActiveCadres: companies.reduce((n, c) => n + c.activeCadres, 0),
+    lateCadres: companies.reduce((n, c) => n + (c.companyValidated ? 0 : c.activeCadres - c.validatedCadres), 0),
+    pendingCompanies: companies.filter((c) => !c.companyValidated).length,
   });
 });
 

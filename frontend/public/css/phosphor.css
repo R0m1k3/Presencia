@@ -1,0 +1,90 @@
+/* Phosphor Icons (MIT) — vendored subset: only the glyphs Presencia uses,
+   so the app renders identically with no external CDN request. */
+@font-face {
+  font-family: "Phosphor";
+  src:
+    url("../fonts/Phosphor.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+.ph {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: "Phosphor" !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+
+  /* Enable Ligatures ================ */
+  letter-spacing: 0;
+  -webkit-font-feature-settings: "liga";
+  -moz-font-feature-settings: "liga=1";
+  -moz-font-feature-settings: "liga";
+  -ms-font-feature-settings: "liga" 1;
+  font-feature-settings: "liga";
+  -webkit-font-variant-ligatures: discretionary-ligatures;
+  font-variant-ligatures: discretionary-ligatures;
+
+  /* Better Font Rendering =========== */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ph.ph-arrow-right:before {
+  content: "\e06c";
+}
+.ph.ph-arrows-out-line-horizontal:before {
+  content: "\e534";
+}
+.ph.ph-bell-ringing:before {
+  content: "\e5e8";
+}
+.ph.ph-buildings:before {
+  content: "\e102";
+}
+.ph.ph-calendar-dots:before {
+  content: "\e7b4";
+}
+.ph.ph-caret-left:before {
+  content: "\e138";
+}
+.ph.ph-caret-right:before {
+  content: "\e13a";
+}
+.ph.ph-clock-counter-clockwise:before {
+  content: "\e1a0";
+}
+.ph.ph-file-pdf:before {
+  content: "\e702";
+}
+.ph.ph-file-xls:before {
+  content: "\eb22";
+}
+.ph.ph-lock-simple:before {
+  content: "\e308";
+}
+.ph.ph-pencil-simple-line:before {
+  content: "\ebc6";
+}
+.ph.ph-plus:before {
+  content: "\e3d4";
+}
+.ph.ph-seal-check:before {
+  content: "\e606";
+}
+.ph.ph-sign-out:before {
+  content: "\e42a";
+}
+.ph.ph-squares-four:before {
+  content: "\e464";
+}
+.ph.ph-user-gear:before {
+  content: "\e4cc";
+}
+.ph.ph-users-three:before {
+  content: "\e68e";
+}

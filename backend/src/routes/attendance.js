@@ -117,6 +117,83 @@ router.put('/', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Per-month aggregates for the history view: half-day counts by status plus
+// both validation flags, most recent month first.
+router.get('/history', async (req, res) => {
+  const requestedUserId = req.query.user_id;
+  if (requestedUserId && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  const target = await getTargetUser(req, requestedUserId);
+  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+  const { rows } = await db.query(
+    `WITH months AS (
+       SELECT EXTRACT(YEAR FROM entry_date)::int AS year,
+              EXTRACT(MONTH FROM entry_date)::int AS month,
+              COUNT(*) FILTER (WHERE status = 'present') AS present,
+              COUNT(*) FILTER (WHERE status = 'absent') AS absent,
+              COUNT(*) FILTER (WHERE status = 'conge') AS conge,
+              COUNT(*) FILTER (WHERE status = 'rtt') AS rtt
+       FROM attendance_entries
+       WHERE user_id = $1
+       GROUP BY 1, 2
+     )
+     SELECT m.*, COALESCE(ml.cadre_validated, false) AS cadre_validated,
+            COALESCE(cmv.admin_validated, false) AS company_validated
+     FROM months m
+     LEFT JOIN month_locks ml ON ml.user_id = $1 AND ml.year = m.year AND ml.month = m.month
+     LEFT JOIN users u ON u.id = $1
+     LEFT JOIN company_month_validations cmv
+       ON cmv.company_id = u.company_id AND cmv.year = m.year AND cmv.month = m.month
+     ORDER BY m.year DESC, m.month DESC
+     LIMIT 24`,
+    [target.id]
+  );
+
+  res.json(rows.map((r) => ({
+    year: r.year,
+    month: r.month,
+    present: parseInt(r.present, 10),
+    absent: parseInt(r.absent, 10),
+    conge: parseInt(r.conge, 10),
+    rtt: parseInt(r.rtt, 10),
+    cadreValidated: r.cadre_validated,
+    companyValidated: r.company_validated,
+  })));
+});
+
+// Clear every entry of a month (the « Tout effacer » action). Same lock rules
+// as writes.
+router.delete('/month', async (req, res) => {
+  const { year, month, user_id: requestedUserId } = req.body || {};
+  const y = parseInt(year, 10);
+  const m = parseInt(month, 10);
+  if (!y || !m || m < 1 || m > 12) return res.status(400).json({ error: 'Paramètres invalides' });
+  if (requestedUserId && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  const target = await getTargetUser(req, requestedUserId);
+  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+
+  const lock = await getMonthLock(target.id, y, m);
+  const companyValidation = await getCompanyValidation(target.company_id, y, m);
+  if (companyValidation.admin_validated) {
+    return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
+  }
+  if (req.user.role !== 'admin' && lock.cadre_validated) {
+    return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
+  }
+
+  const start = `${y}-${String(m).padStart(2, '0')}-01`;
+  await db.query(
+    `DELETE FROM attendance_entries
+     WHERE user_id = $1 AND entry_date >= $2::date AND entry_date < ($2::date + INTERVAL '1 month')`,
+    [target.id, start]
+  );
+  res.json({ ok: true });
+});
+
 // Bulk upsert (e.g. « fill all empty weekdays with présent »). All entries
 // must pass the same lock checks as single writes; months are checked once
 // per distinct month present in the payload.
