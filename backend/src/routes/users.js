@@ -12,8 +12,8 @@ const USER_COLUMNS = 'id, full_name, email, role, company_id, active, created_at
 
 // Shared checks for create and update. Returns an error message or null.
 function profileError({ full_name, email, role, company_id }) {
-  if (!isName(full_name) || !email || !role) return 'Champs requis manquants';
-  if (!isEmail(String(email).trim())) return 'Adresse e-mail invalide';
+  if (!isName(full_name) || typeof email !== 'string' || !email || !role) return 'Champs requis manquants';
+  if (!isEmail(email.trim())) return 'Adresse e-mail invalide';
   if (!['admin', 'cadre'].includes(role)) return 'Rôle invalide';
   if (role === 'cadre' && !isId(String(company_id ?? ''))) return 'Une société doit être attribuée au cadre';
   return null;

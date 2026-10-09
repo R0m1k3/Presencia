@@ -16,6 +16,11 @@ const app = express();
 const PORT = process.env.PORT || 4790;
 
 app.disable('x-powered-by');
+// Requests arrive through nginx (and often a reverse proxy in front of it),
+// both on private Docker networks: take the client address from
+// X-Forwarded-For, trusting only private-network hops so it cannot be spoofed
+// from the Internet. Used by the login rate limit.
+app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 // The API is also reachable on its own port, without the nginx headers.
 app.use((req, res, next) => {
   res.set({

@@ -66,8 +66,10 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Session invalide ou expirée' });
   }
   const { rows } = await db.query(
-    `SELECT id, full_name, email, role, company_id, active, password_changed_at
-     FROM users WHERE id = $1`,
+    `SELECT u.id, u.full_name, u.email, u.role, u.company_id, u.active, u.password_changed_at,
+            c.name AS company_name
+     FROM users u LEFT JOIN companies c ON c.id = u.company_id
+     WHERE u.id = $1`,
     [payload.id]
   );
   const u = rows[0];
@@ -80,6 +82,7 @@ async function requireAuth(req, res, next) {
     id: u.id,
     role: u.role,
     companyId: u.company_id,
+    companyName: u.company_name,
     fullName: u.full_name,
     email: u.email,
   };

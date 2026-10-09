@@ -6,31 +6,47 @@ const { passwordError } = require('../utils/validate');
 
 const router = express.Router();
 
-// Brute-force guard: after MAX_FAILURES wrong passwords for one email within
-// WINDOW_MS, further attempts on that email are refused until the window ends.
-const MAX_FAILURES = 10;
+// Brute-force guard, two counters over WINDOW_MS:
+// - per (email, IP): guessing one account's password. Keyed by IP too, so
+//   that someone failing on purpose cannot lock the real owner out from
+//   another address;
+// - per IP, all emails together: trying a few passwords on many accounts.
 const WINDOW_MS = 15 * 60 * 1000;
-const failures = new Map(); // email -> { count, since }
+const MAX_PER_ACCOUNT = 10;
+const MAX_PER_IP = 50;
+const MAX_KEYS = 50000; // bounds memory whatever the attempt volume
+const failures = new Map(); // key -> { count, since }
 
-function lockedFor(email) {
-  const f = failures.get(email);
-  if (!f) return 0;
-  const left = f.since + WINDOW_MS - Date.now();
-  if (left <= 0) {
-    failures.delete(email);
-    return 0;
-  }
-  return f.count >= MAX_FAILURES ? left : 0;
+function failuresOf(key, now) {
+  const f = failures.get(key);
+  if (f && f.since + WINDOW_MS > now) return f;
+  if (f) failures.delete(key);
+  return null;
 }
 
-function recordFailure(email) {
+// Milliseconds until a new attempt is allowed, 0 if allowed now.
+function lockedFor(email, ip) {
   const now = Date.now();
-  if (failures.size > 10000) {
-    for (const [k, f] of failures) if (f.since + WINDOW_MS <= now) failures.delete(k);
+  let wait = 0;
+  for (const [key, max] of [[`a:${ip}:${email}`, MAX_PER_ACCOUNT], [`i:${ip}`, MAX_PER_IP]]) {
+    const f = failuresOf(key, now);
+    if (f && f.count >= max) wait = Math.max(wait, f.since + WINDOW_MS - now);
   }
-  const f = failures.get(email);
-  if (!f || f.since + WINDOW_MS <= now) failures.set(email, { count: 1, since: now });
-  else f.count += 1;
+  return wait;
+}
+
+function recordFailure(email, ip) {
+  const now = Date.now();
+  for (const key of [`a:${ip}:${email}`, `i:${ip}`]) {
+    const f = failuresOf(key, now);
+    if (f) {
+      f.count += 1;
+      continue;
+    }
+    // Map keeps insertion order: the first key is the oldest window.
+    if (failures.size >= MAX_KEYS) failures.delete(failures.keys().next().value);
+    failures.set(key, { count: 1, since: now });
+  }
 }
 
 // Compared against when the email is unknown, so that a wrong email and a
@@ -54,7 +70,7 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Email et mot de passe requis' });
   }
   const key = email.trim().toLowerCase();
-  const wait = lockedFor(key);
+  const wait = lockedFor(key, req.ip);
   if (wait) {
     const minutes = Math.ceil(wait / 60000);
     return res.status(429).json({ error: `Trop de tentatives. Réessayez dans ${minutes} min.` });
@@ -71,10 +87,10 @@ router.post('/login', async (req, res) => {
   const user = rows[0];
   const ok = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !ok || !user.active) {
-    recordFailure(key);
+    recordFailure(key, req.ip);
     return res.status(401).json({ error: 'Identifiants incorrects' });
   }
-  failures.delete(key);
+  failures.delete(`a:${req.ip}:${key}`);
   setAuthCookie(res, signToken(user));
   res.json(publicUser(user));
 });
@@ -84,15 +100,10 @@ router.post('/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/me', requireAuth, async (req, res) => {
-  const { rows } = await db.query(
-    `SELECT u.id, u.full_name, u.email, u.role, u.company_id, c.name AS company_name
-     FROM users u
-     LEFT JOIN companies c ON c.id = u.company_id
-     WHERE u.id = $1`,
-    [req.user.id]
-  );
-  res.json(publicUser(rows[0]));
+// requireAuth has just read the account from the database.
+router.get('/me', requireAuth, (req, res) => {
+  const { id, fullName, email, role, companyId, companyName } = req.user;
+  res.json({ id, fullName, email, role, companyId, companyName });
 });
 
 // Any signed-in user changes their own password; the current one is required.
@@ -104,6 +115,7 @@ router.put('/password', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Mot de passe actuel requis' });
   }
   const { rows } = await db.query('SELECT password_hash FROM users WHERE id = $1', [req.user.id]);
+  if (!rows[0]) return res.status(401).json({ error: 'Session invalide ou expirée' });
   if (!(await bcrypt.compare(current, rows[0].password_hash))) {
     return res.status(400).json({ error: 'Mot de passe actuel incorrect' });
   }

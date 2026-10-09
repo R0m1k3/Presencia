@@ -6,7 +6,9 @@ const MAX_INT = 2147483647;
 
 function isId(v) {
   if (typeof v === 'number') return Number.isInteger(v) && v > 0 && v <= MAX_INT;
-  return typeof v === 'string' && /^\d{1,10}$/.test(v) && Number(v) > 0 && Number(v) <= MAX_INT;
+  // Canonical form only: '07' would reach SQL as 7 yet differ from '7' in
+  // the string comparisons that guard an admin's own account.
+  return typeof v === 'string' && /^[1-9]\d{0,9}$/.test(v) && Number(v) <= MAX_INT;
 }
 
 function isDate(s) {

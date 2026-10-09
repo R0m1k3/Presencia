@@ -31,7 +31,9 @@ async function loadCompanyData(companyId, year, month) {
   const cadres = cadreRows.map((c) => ({ id: c.id, fullName: c.full_name, entries: new Map() }));
   const byId = new Map(cadres.map((c) => [c.id, c]));
   for (const e of entryRows) {
-    byId.get(e.user_id).entries.set(`${e.entry_date}:${e.period}`, e.status);
+    // a cadre (re)activated between the two queries is simply left out
+    const cadre = byId.get(e.user_id);
+    if (cadre) cadre.entries.set(`${e.entry_date}:${e.period}`, e.status);
   }
 
   return { company, cadres };

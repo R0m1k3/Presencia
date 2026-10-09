@@ -51,7 +51,7 @@
     try { data = await res.json(); } catch (e) { /* empty body */ }
     // The session ended under us (expired, password reset, account
     // disabled): go back to the login screen instead of failing every call.
-    if (res.status === 401 && state.user && !path.startsWith('/auth/')) {
+    if (res.status === 401 && state.user && path !== '/auth/login') {
       location.reload();
       return new Promise(() => {});
     }
@@ -490,6 +490,7 @@
     if (state.viewing) qs.set('user_id', state.viewing.id);
     const cal = await api(`/attendance?${qs}`);
     if (req !== planningReq) return;
+    cal.key = qs.toString();
     state.cal = cal;
     renderPlanning();
   }
@@ -624,10 +625,12 @@
 
   // After a successful write, apply it to the month already in memory
   // instead of reloading the month: painting stays fluid. `cal` is the month
-  // the write was made on; if the user moved to another month meanwhile,
-  // there is nothing to patch.
+  // the write was made on. It is matched by month and person, not by object:
+  // a reload that answered before this write landed must get it too, while a
+  // different month on screen must not.
   function patchEntries(cal, changes) {
-    if (state.cal !== cal) return;
+    if (!state.cal || state.cal.key !== cal.key) return;
+    cal = state.cal;
     const map = new Map((cal.entries || []).map((e) => [`${e.date}|${e.period}`, e]));
     changes.forEach(({ date, period, status }) => {
       if (status) map.set(`${date}|${period}`, { date, period, status });
