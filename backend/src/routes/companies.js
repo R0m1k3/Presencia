@@ -1,9 +1,11 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { isName, idParam } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth, requireAdmin);
+router.param('id', idParam);
 
 router.get('/', async (req, res) => {
   const { rows } = await db.query(
@@ -19,7 +21,7 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const { name } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Nom requis' });
+  if (!isName(name)) return res.status(400).json({ error: 'Nom requis (255 caractères maximum)' });
   try {
     const { rows } = await db.query(
       'INSERT INTO companies (name) VALUES ($1) RETURNING id, name, created_at',
@@ -34,7 +36,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   const { name } = req.body || {};
-  if (!name || !name.trim()) return res.status(400).json({ error: 'Nom requis' });
+  if (!isName(name)) return res.status(400).json({ error: 'Nom requis (255 caractères maximum)' });
   try {
     const { rows } = await db.query(
       'UPDATE companies SET name = $1 WHERE id = $2 RETURNING id, name, created_at',

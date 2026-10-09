@@ -49,6 +49,12 @@
     });
     let data = null;
     try { data = await res.json(); } catch (e) { /* empty body */ }
+    // The session ended under us (expired, password reset, account
+    // disabled): go back to the login screen instead of failing every call.
+    if (res.status === 401 && state.user && !path.startsWith('/auth/')) {
+      location.reload();
+      return new Promise(() => {});
+    }
     if (!res.ok) {
       const err = new Error((data && data.error) || `Erreur ${res.status}`);
       err.status = res.status;
@@ -62,12 +68,17 @@
     const el = $('toast');
     el.textContent = msg;
     el.classList.toggle('is-error', kind === 'error');
+    el.setAttribute('role', kind === 'error' ? 'alert' : 'status');
     el.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+    // errors usually need reading, not just noticing
+    toastTimer = setTimeout(() => { el.hidden = true; }, kind === 'error' ? 6000 : 3000);
   }
 
-  const esc = (s) => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  // Escapes quotes too: values are also interpolated into attributes
+  // (value="…", data-name="…"), where a bare " would end the attribute.
+  const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ESC[c]);
   const initials = (n) => String(n || '').trim().split(/\s+/).map((w) => w[0] || '').join('').slice(0, 2).toUpperCase();
   const monthLabel = () => `${MONTHS[state.m - 1]} ${state.y}`;
   const iso = (d) => `${state.y}-${String(state.m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -77,6 +88,33 @@
     if (!s) return '';
     const d = new Date(s);
     return `${d.toLocaleDateString('fr-FR')} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  // Fills a table body and copies each column title onto its cells
+  // (data-label): on a phone, rows are shown as cards labelled that way.
+  function fillTable(tbody, html) {
+    tbody.innerHTML = html;
+    const heads = [...tbody.closest('table').querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    tbody.querySelectorAll('tr').forEach((tr) => {
+      [...tr.children].forEach((td, i) => { if (heads[i]) td.dataset.label = heads[i]; });
+    });
+  }
+
+  // Disables a form's submit button while `fn` runs: no double submission,
+  // and a visible sign that something is happening.
+  async function submitting(form, fn) {
+    const btn = form.querySelector('[type="submit"]');
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.setAttribute('aria-busy', 'true');
+    try {
+      await fn();
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute('aria-busy');
+    }
   }
 
   // ── auth ────────────────────────────────────────────────────────────────
@@ -127,8 +165,10 @@
   $('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const errBox = $('login-error');
+    const btn = e.target.querySelector('[type="submit"]');
     errBox.hidden = true;
     let user;
+    btn.disabled = true;
     try {
       user = await api('/auth/login', {
         method: 'POST',
@@ -137,7 +177,10 @@
     } catch (err) {
       errBox.textContent = err.message || 'Connexion impossible';
       errBox.hidden = false;
+      $('login-password').select();
       return;
+    } finally {
+      btn.disabled = false;
     }
     // Past this point the login screen is gone, so its error box would be
     // invisible: report anything that goes wrong as a toast instead.
@@ -154,29 +197,63 @@
   }
   $('logout-btn').addEventListener('click', logout);
   $('logout-btn-mobile').addEventListener('click', logout);
+  $('my-password-btn').addEventListener('click', myPasswordDialog);
+  $('my-password-btn-mobile').addEventListener('click', myPasswordDialog);
+
+  function myPasswordDialog() {
+    openDialog(`
+      <h4 class="dialog-title" id="dialog-title">Changer mon mot de passe</h4>
+      <form id="mypw-form">
+        <div class="field"><label for="mypw-current">Mot de passe actuel</label>
+          <input class="input" id="mypw-current" type="password" required autocomplete="current-password" /></div>
+        <div class="field"><label for="mypw-new">Nouveau mot de passe</label>
+          <input class="input" id="mypw-new" type="password" required minlength="8" autocomplete="new-password" />
+          <span class="field-hint">8 caractères minimum. Vos autres sessions seront déconnectées.</span></div>
+        <div class="field"><label for="mypw-confirm">Confirmer</label>
+          <input class="input" id="mypw-confirm" type="password" required minlength="8" autocomplete="new-password" /></div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary" data-close>Annuler</button>
+          <button type="submit" class="btn btn-primary">Mettre à jour</button>
+        </div>
+      </form>`);
+    $('mypw-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      if ($('mypw-new').value !== $('mypw-confirm').value) {
+        $('mypw-confirm').setCustomValidity('Les deux mots de passe diffèrent');
+        $('mypw-confirm').reportValidity();
+        return;
+      }
+      submitting(e.target, async () => {
+        await api('/auth/password', { method: 'PUT', body: { current: $('mypw-current').value, password: $('mypw-new').value } });
+        closeDialog();
+        toast('Mot de passe mis à jour');
+      });
+    });
+    $('mypw-confirm').addEventListener('input', (e) => e.target.setCustomValidity(''));
+  }
 
   // ── navigation ──────────────────────────────────────────────────────────
   function navGroups() {
     if (state.user.role === 'admin') {
       return [
         { label: 'Pilotage', items: [
-          { key: 'dashboard', label: 'Tableau de bord', icon: 'ph-squares-four' },
-          { key: 'validation', label: 'Validation & export', icon: 'ph-seal-check' },
+          { key: 'dashboard', label: 'Tableau de bord', short: 'Accueil', icon: 'ph-squares-four' },
+          { key: 'validation', label: 'Validation & export', short: 'Validation', icon: 'ph-seal-check' },
         ] },
         { label: 'Équipes', items: [
-          { key: 'plannings', label: 'Plannings des cadres', icon: 'ph-users-three' },
-          { key: 'users', label: 'Utilisateurs', icon: 'ph-user-gear' },
+          { key: 'plannings', label: 'Plannings des cadres', short: 'Plannings', icon: 'ph-users-three' },
+          { key: 'users', label: 'Utilisateurs', short: 'Comptes', icon: 'ph-user-gear' },
         ] },
-        { label: 'Ma saisie', items: [{ key: 'planning', label: 'Mon planning', icon: 'ph-calendar-dots' }] },
-        { label: 'Configuration', items: [{ key: 'companies', label: 'Sociétés', icon: 'ph-buildings' }] },
+        { label: 'Ma saisie', items: [{ key: 'planning', label: 'Mon planning', short: 'Ma saisie', icon: 'ph-calendar-dots' }] },
+        { label: 'Configuration', items: [{ key: 'companies', label: 'Sociétés', short: 'Sociétés', icon: 'ph-buildings' }] },
       ];
     }
     return [
       { label: 'Mon mois', items: [
-        { key: 'dashboard', label: 'Tableau de bord', icon: 'ph-squares-four' },
-        { key: 'planning', label: 'Mon planning', icon: 'ph-calendar-dots' },
+        { key: 'dashboard', label: 'Tableau de bord', short: 'Accueil', icon: 'ph-squares-four' },
+        { key: 'planning', label: 'Mon planning', short: 'Planning', icon: 'ph-calendar-dots' },
       ] },
-      { label: 'Archives', items: [{ key: 'history', label: 'Historique', icon: 'ph-clock-counter-clockwise' }] },
+      { label: 'Archives', items: [{ key: 'history', label: 'Historique', short: 'Historique', icon: 'ph-clock-counter-clockwise' }] },
     ];
   }
 
@@ -196,18 +273,21 @@
         </div>
       </div>`).join('');
 
-    const flat = groups.reduce((a, g) => a.concat(g.items), []).slice(0, 4);
+    // Every destination, not just the first few: on a phone this bar is the
+    // only navigation there is.
+    const flat = groups.reduce((a, g) => a.concat(g.items), []);
     $('mobile-nav').innerHTML = flat.map((it) => `
-      <button class="navitem" data-nav="${it.key}" aria-current="false">
-        <i class="ph ${it.icon}"></i><span>${esc(it.label.split(' ')[0])}</span>
+      <button class="navitem" data-nav="${it.key}" aria-current="false" aria-label="${esc(it.label)}">
+        <i class="ph ${it.icon}"></i><span>${esc(it.short)}</span>
+        <span class="ni-badge" data-badge="${it.key}" hidden></span>
       </button>`).join('');
   }
 
   function setNavBadge(key, count) {
-    const el = document.querySelector(`[data-badge="${key}"]`);
-    if (!el) return;
-    el.textContent = count || '';
-    el.hidden = !count;
+    document.querySelectorAll(`[data-badge="${key}"]`).forEach((el) => {
+      el.textContent = count || '';
+      el.hidden = !count;
+    });
   }
 
   document.addEventListener('click', (e) => {
@@ -368,7 +448,7 @@
       tb.innerHTML = '<tr class="empty-row"><td colspan="4">Aucune société. Créez-en une dans « Sociétés ».</td></tr>';
       return;
     }
-    tb.innerHTML = companies.map((c) => {
+    fillTable(tb, companies.map((c) => {
       const ready = c.activeCadres > 0 && c.validatedCadres === c.activeCadres;
       const status = c.companyValidated ? 'Validée' : (ready ? 'Prête à valider' : 'En cours');
       const tagCls = c.companyValidated ? 'tag-accent' : (ready ? 'tag-outline' : 'tag-neutral');
@@ -378,7 +458,7 @@
         <td><span class="tag ${tagCls}">${status}</span></td>
         <td class="cell-actions"><button class="btn btn-ghost" data-open-company="${c.id}">Ouvrir</button></td>
       </tr>`;
-    }).join('');
+    }).join(''));
     tb.querySelectorAll('[data-open-company]').forEach((b) => {
       b.addEventListener('click', () => { state.validationCompany = b.dataset.openCompany; go('validation'); });
     });
@@ -401,10 +481,16 @@
     return c;
   }
 
+  // Clicking ‹ › quickly fires overlapping loads; only the latest may render,
+  // or a slow earlier response would show the wrong month.
+  let planningReq = 0;
   async function loadPlanning() {
+    const req = ++planningReq;
     const qs = new URLSearchParams({ year: state.y, month: state.m });
     if (state.viewing) qs.set('user_id', state.viewing.id);
-    state.cal = await api(`/attendance?${qs}`);
+    const cal = await api(`/attendance?${qs}`);
+    if (req !== planningReq) return;
+    state.cal = cal;
     renderPlanning();
   }
 
@@ -536,15 +622,38 @@
     openPop(half, date, period);
   });
 
+  // After a successful write, apply it to the month already in memory
+  // instead of reloading the month: painting stays fluid. `cal` is the month
+  // the write was made on; if the user moved to another month meanwhile,
+  // there is nothing to patch.
+  function patchEntries(cal, changes) {
+    if (state.cal !== cal) return;
+    const map = new Map((cal.entries || []).map((e) => [`${e.date}|${e.period}`, e]));
+    changes.forEach(({ date, period, status }) => {
+      if (status) map.set(`${date}|${period}`, { date, period, status });
+      else map.delete(`${date}|${period}`);
+    });
+    cal.entries = [...map.values()];
+    renderPlanning();
+  }
+
+  // A rejected write (month locked meanwhile, session issue…) leaves the
+  // screen out of date: say why, then show what the server really has.
+  function writeFailed(err) {
+    toast(err.message, 'error');
+    loadPlanning().catch(() => {});
+  }
+
   async function applyHalf(date, period, status) {
     closePop();
+    const cal = state.cal;
     try {
       const body = status ? { date, period, status } : { date, period };
       if (state.viewing) body.user_id = state.viewing.id;
       await api('/attendance', { method: status ? 'PUT' : 'DELETE', body });
-      await loadPlanning();
+      patchEntries(cal, [{ date, period, status }]);
     } catch (err) {
-      toast(err.message, 'error');
+      writeFailed(err);
     }
   }
 
@@ -554,13 +663,14 @@
     const current = (state.cal.entries || []).find((e) => e.date === date && e.period === period);
     const status = (current && current.status) || state.brush || 'present';
     closePop();
+    const cal = state.cal;
     try {
       const body = { entries: [{ date, period: 'AM', status }, { date, period: 'PM', status }] };
       if (state.viewing) body.user_id = state.viewing.id;
       await api('/attendance/bulk', { method: 'PUT', body });
-      await loadPlanning();
+      patchEntries(cal, body.entries);
     } catch (err) {
-      toast(err.message, 'error');
+      writeFailed(err);
     }
   }
 
@@ -650,20 +760,22 @@
       const body = { entries };
       if (state.viewing) body.user_id = state.viewing.id;
       await api('/attendance/bulk', { method: 'PUT', body });
-      toast('Jours ouvrés vides remplis en « Présent »');
-      await loadPlanning();
-    } catch (err) { toast(err.message, 'error'); }
+      toast(`${entries.length} demi-journée(s) remplie(s) en « Présent »`);
+      patchEntries(data, entries);
+    } catch (err) { writeFailed(err); }
   });
 
   $('clear-month-btn').addEventListener('click', async () => {
-    if (!confirm(`Effacer toutes les saisies de ${monthLabel()} ?`)) return;
+    const cal = state.cal;
+    if (!cal || !(cal.entries || []).length) return toast('Rien à effacer pour ce mois');
+    if (!confirm(`Effacer les ${cal.entries.length} saisie(s) de ${monthLabel()} ? Cette action est définitive.`)) return;
     try {
       const body = { year: state.y, month: state.m };
       if (state.viewing) body.user_id = state.viewing.id;
       await api('/attendance/month', { method: 'DELETE', body });
       toast('Mois effacé');
-      await loadPlanning();
-    } catch (err) { toast(err.message, 'error'); }
+      patchEntries(cal, cal.entries.map((e) => ({ date: e.date, period: e.period, status: null })));
+    } catch (err) { writeFailed(err); }
   });
 
   // ── companies ───────────────────────────────────────────────────────────
@@ -685,14 +797,14 @@
       tb.innerHTML = '<tr class="empty-row"><td colspan="4">Aucune société pour l’instant.</td></tr>';
       return;
     }
-    tb.innerHTML = state.companies.map((c) => `<tr>
+    fillTable(tb, state.companies.map((c) => `<tr>
       <td>${esc(c.name)}</td>
       <td class="cell-muted">${c.active_cadre_count}</td>
       <td class="cell-muted">${new Date(c.created_at).toLocaleDateString('fr-FR')}</td>
       <td class="cell-actions">
         <button class="btn btn-ghost" data-co-rename="${c.id}">Renommer</button>
-        <button class="btn btn-ghost" data-co-delete="${c.id}">Supprimer</button>
-      </td></tr>`).join('');
+        <button class="btn btn-ghost btn-danger-ghost" data-co-delete="${c.id}">Supprimer</button>
+      </td></tr>`).join(''));
   }
 
   $('companies-rows').addEventListener('click', async (e) => {
@@ -714,25 +826,25 @@
 
   function companyDialog(company) {
     openDialog(`
-      <h4 class="dialog-title">${company ? 'Renommer la société' : 'Nouvelle société'}</h4>
+      <h4 class="dialog-title" id="dialog-title">${company ? 'Renommer la société' : 'Nouvelle société'}</h4>
       <form id="co-form">
         <div class="field"><label for="co-name">Nom</label>
-          <input class="input" id="co-name" required value="${company ? esc(company.name) : ''}" /></div>
+          <input class="input" id="co-name" required maxlength="255" value="${company ? esc(company.name) : ''}" /></div>
         <div class="dialog-actions">
           <button type="button" class="btn btn-secondary" data-close>Annuler</button>
           <button type="submit" class="btn btn-primary">${company ? 'Enregistrer' : 'Créer'}</button>
         </div>
       </form>`);
-    $('co-form').addEventListener('submit', async (e) => {
+    $('co-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const name = $('co-name').value.trim();
-      try {
+      submitting(e.target, async () => {
         if (company) await api(`/companies/${company.id}`, { method: 'PUT', body: { name } });
         else await api('/companies', { method: 'POST', body: { name } });
         closeDialog();
         toast('Société enregistrée');
         await loadCompaniesView();
-      } catch (err) { toast(err.message, 'error'); }
+      });
     });
   }
 
@@ -745,17 +857,28 @@
     await refreshUsers();
   }
 
+  const matches = (u) => {
+    const q = state.search.trim().toLowerCase();
+    return !q || `${u.full_name} ${u.email}`.toLowerCase().includes(q);
+  };
+
+  // Fetches only when the company filter changes; typing in the search box
+  // filters what is already loaded (renderUsers) instead of one request per key.
   async function refreshUsers() {
     const qs = state.filterCompany !== 'all' ? `?company_id=${state.filterCompany}` : '';
     state.users = await api(`/users${qs}`);
-    const q = state.search.trim().toLowerCase();
-    const rows = state.users.filter((u) => !q || `${u.full_name}${u.email}`.toLowerCase().includes(q));
+    renderUsers();
+  }
+
+  function renderUsers() {
+    const rows = state.users.filter(matches);
     const tb = $('users-rows');
     if (!rows.length) {
-      tb.innerHTML = '<tr class="empty-row"><td colspan="6">Aucun utilisateur ne correspond.</td></tr>';
+      tb.innerHTML = `<tr class="empty-row"><td colspan="6">${state.users.length ? 'Aucun utilisateur ne correspond à ce filtre.' : 'Aucun utilisateur.'}</td></tr>`;
       return;
     }
-    tb.innerHTML = rows.map((u) => `<tr>
+    const self = String(state.user.id);
+    fillTable(tb, rows.map((u) => `<tr>
       <td>${esc(u.full_name)}</td>
       <td class="cell-muted">${esc(u.email)}</td>
       <td><span class="tag ${u.role === 'admin' ? 'tag-accent' : 'tag-neutral'}">${u.role === 'admin' ? 'Admin' : 'Cadre'}</span></td>
@@ -764,12 +887,12 @@
       <td class="cell-actions">
         <button class="btn btn-ghost" data-u-edit="${u.id}">Modifier</button>
         <button class="btn btn-ghost" data-u-pw="${u.id}">Mot de passe</button>
-        <button class="btn btn-ghost" data-u-toggle="${u.id}">${u.active ? 'Désactiver' : 'Activer'}</button>
-      </td></tr>`).join('');
+        ${String(u.id) === self ? '' : `<button class="btn btn-ghost" data-u-toggle="${u.id}">${u.active ? 'Désactiver' : 'Activer'}</button>`}
+      </td></tr>`).join(''));
   }
 
   $('us-co').addEventListener('change', (e) => { state.filterCompany = e.target.value; refreshUsers().catch((x) => toast(x.message, 'error')); });
-  $('us-q').addEventListener('input', (e) => { state.search = e.target.value; refreshUsers().catch((x) => toast(x.message, 'error')); });
+  $('us-q').addEventListener('input', (e) => { state.search = e.target.value; renderUsers(); });
 
   $('users-rows').addEventListener('click', async (e) => {
     const ed = e.target.closest('[data-u-edit]');
@@ -780,6 +903,7 @@
     if (pw) return passwordDialog(find(pw.dataset.uPw));
     if (tg) {
       const u = find(tg.dataset.uToggle);
+      if (u.active && !confirm(`Désactiver le compte de ${u.full_name} ? Il ne pourra plus se connecter.`)) return;
       try {
         await api(`/users/${u.id}`, {
           method: 'PUT',
@@ -796,14 +920,15 @@
   function userDialog(user) {
     const edit = !!user;
     openDialog(`
-      <h4 class="dialog-title">${edit ? 'Modifier l’utilisateur' : 'Nouvel utilisateur'}</h4>
+      <h4 class="dialog-title" id="dialog-title">${edit ? 'Modifier l’utilisateur' : 'Nouvel utilisateur'}</h4>
       <form id="u-form">
         <div class="field"><label for="u-name">Nom complet</label>
           <input class="input" id="u-name" required value="${edit ? esc(user.full_name) : ''}" /></div>
         <div class="field"><label for="u-email">E-mail</label>
           <input class="input" id="u-email" type="email" required value="${edit ? esc(user.email) : ''}" /></div>
         ${edit ? '' : `<div class="field"><label for="u-pass">Mot de passe</label>
-          <input class="input" id="u-pass" type="password" required minlength="6" /></div>`}
+          <input class="input" id="u-pass" type="password" required minlength="8" autocomplete="new-password" />
+          <span class="field-hint">8 caractères minimum. À transmettre à la personne.</span></div>`}
         <div class="field"><label for="u-role">Rôle</label>
           <select class="input" id="u-role">
             <option value="cadre" ${!edit || user.role === 'cadre' ? 'selected' : ''}>Cadre</option>
@@ -817,13 +942,18 @@
         </div>
       </form>`);
     companyOptions($('u-co'), { selected: edit ? user.company_id : null });
+    if (!state.companies.length) {
+      $('u-co').innerHTML = '<option value="">Aucune société — créez-en une d’abord</option>';
+    }
 
     const role = $('u-role');
+    // The API refuses to demote your own account; don't offer it.
+    if (edit && String(user.id) === String(state.user.id)) role.disabled = true;
     const toggleCo = () => { $('u-co-field').hidden = role.value === 'admin'; };
     role.addEventListener('change', toggleCo);
     toggleCo();
 
-    $('u-form').addEventListener('submit', async (e) => {
+    $('u-form').addEventListener('submit', (e) => {
       e.preventDefault();
       const body = {
         full_name: $('u-name').value.trim(),
@@ -833,7 +963,7 @@
       };
       if (!edit) body.password = $('u-pass').value;
       else body.active = user.active;
-      try {
+      submitting(e.target, async () => {
         if (edit) await api(`/users/${user.id}`, { method: 'PUT', body });
         else await api('/users', { method: 'POST', body });
         closeDialog();
@@ -847,29 +977,30 @@
         }
         toast('Utilisateur enregistré');
         await refreshUsers();
-      } catch (err) { toast(err.message, 'error'); }
+      });
     });
   }
 
   function passwordDialog(user) {
     openDialog(`
-      <h4 class="dialog-title">Nouveau mot de passe</h4>
+      <h4 class="dialog-title" id="dialog-title">Nouveau mot de passe</h4>
       <p class="lede">Pour ${esc(user.full_name)}</p>
       <form id="pw-form">
         <div class="field"><label for="pw-new">Mot de passe</label>
-          <input class="input" id="pw-new" type="password" required minlength="6" /></div>
+          <input class="input" id="pw-new" type="password" required minlength="8" autocomplete="new-password" />
+          <span class="field-hint">8 caractères minimum. Ses sessions ouvertes seront déconnectées.</span></div>
         <div class="dialog-actions">
           <button type="button" class="btn btn-secondary" data-close>Annuler</button>
           <button type="submit" class="btn btn-primary">Mettre à jour</button>
         </div>
       </form>`);
-    $('pw-form').addEventListener('submit', async (e) => {
+    $('pw-form').addEventListener('submit', (e) => {
       e.preventDefault();
-      try {
+      submitting(e.target, async () => {
         await api(`/users/${user.id}/password`, { method: 'PUT', body: { password: $('pw-new').value } });
         closeDialog();
         toast('Mot de passe mis à jour');
-      } catch (err) { toast(err.message, 'error'); }
+      });
     });
   }
 
@@ -883,34 +1014,37 @@
     await refreshCadreRows();
   }
 
+  // Loads cadres and, per company, their month status (all companies in
+  // parallel). The search box then filters locally (renderCadreRows).
+  let cadreData = { cadres: [], byId: new Map() };
   async function refreshCadreRows() {
     const qs = state.filterCompany !== 'all' ? `?company_id=${state.filterCompany}` : '';
-    const users = await api(`/users${qs}`);
-    const q = state.search.trim().toLowerCase();
-    const cadres = users.filter((u) => u.role === 'cadre' && (!q || `${u.full_name}${u.email}`.toLowerCase().includes(q)));
+    const cadres = (await api(`/users${qs}`)).filter((u) => u.role === 'cadre');
+    const byId = new Map();
+    const companyIds = [...new Set(cadres.map((c) => c.company_id).filter(Boolean))];
+    await Promise.all(companyIds.map((cid) => api(`/validations/company/${cid}?year=${state.y}&month=${state.m}`)
+      .then((v) => v.cadres.forEach((c) => byId.set(c.id, c)))
+      .catch(() => { /* company may have been removed */ })));
+    cadreData = { cadres, byId };
+    renderCadreRows();
+  }
 
-    // validation state per company, so each row can show Validé / En cours
-    const byCompany = new Map();
-    for (const cid of new Set(cadres.map((c) => c.company_id).filter(Boolean))) {
-      try {
-        const v = await api(`/validations/company/${cid}?year=${state.y}&month=${state.m}`);
-        v.cadres.forEach((c) => byCompany.set(c.id, c));
-      } catch (e) { /* company may have been removed */ }
-    }
-
+  function renderCadreRows() {
+    const { byId } = cadreData;
+    const cadres = cadreData.cadres.filter(matches);
     const box = $('cadre-rows');
     if (!cadres.length) {
-      box.innerHTML = '<p class="lede">Aucun cadre ne correspond à ce filtre.</p>';
+      box.innerHTML = `<p class="lede">${cadreData.cadres.length ? 'Aucun cadre ne correspond à ce filtre.' : 'Aucun cadre. Créez des comptes « Cadre » dans Utilisateurs.'}</p>`;
       return;
     }
     const work = workdayHalves();
     box.innerHTML = cadres.map((u) => {
-      const v = byCompany.get(u.id);
+      const v = byId.get(u.id);
       const filled = v ? v.filled : 0;
       const status = !u.active ? 'Inactif' : (v && v.cadreValidated ? 'Validé' : 'En cours');
       const tagCls = !u.active ? 'tag-neutral' : (v && v.cadreValidated ? 'tag-accent' : 'tag-outline');
       return `<button class="rowbtn" data-cadre="${u.id}" data-name="${esc(u.full_name)}" data-co="${esc(u.company_name || '')}">
-        <span class="avatar neutral">${initials(u.full_name)}</span>
+        <span class="avatar neutral">${esc(initials(u.full_name))}</span>
         <span class="rowbtn-text"><span>${esc(u.full_name)}</span>
           <span class="rowbtn-sub">${esc(u.company_name || '—')}</span></span>
         <span class="rowbtn-right">
@@ -921,7 +1055,7 @@
   }
 
   $('pl-co').addEventListener('change', (e) => { state.filterCompany = e.target.value; refreshCadreRows().catch((x) => toast(x.message, 'error')); });
-  $('pl-q').addEventListener('input', (e) => { state.search = e.target.value; refreshCadreRows().catch((x) => toast(x.message, 'error')); });
+  $('pl-q').addEventListener('input', (e) => { state.search = e.target.value; renderCadreRows(); });
 
   $('cadre-rows').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cadre]');
@@ -988,14 +1122,14 @@
       tb.innerHTML = '<tr class="empty-row"><td colspan="4">Aucun cadre actif dans cette société.</td></tr>';
       return;
     }
-    tb.innerHTML = data.cadres.map((c) => `<tr>
+    fillTable(tb, data.cadres.map((c) => `<tr>
       <td>${esc(c.fullName)}</td>
       <td class="cell-muted">${c.filled}/${work}</td>
       <td><span class="tag ${c.cadreValidated ? 'tag-accent' : 'tag-outline'}">${c.cadreValidated ? 'Validé' : 'En cours'}</span></td>
       <td class="cell-actions">
         <button class="btn btn-ghost" data-v-open="${c.id}" data-name="${esc(c.fullName)}">Voir</button>
         ${c.cadreValidated && !data.companyValidated ? `<button class="btn btn-ghost" data-v-reopen="${c.id}">Réouvrir</button>` : ''}
-      </td></tr>`).join('');
+      </td></tr>`).join(''));
   }
 
   $('va-co').addEventListener('change', (e) => { state.validationCompany = e.target.value; refreshValidation().catch((x) => toast(x.message, 'error')); });
@@ -1036,16 +1170,37 @@
     } catch (err) { toast(err.message, 'error'); }
   });
 
-  $('export-pdf-btn').addEventListener('click', () => download('pdf'));
-  $('export-excel-btn').addEventListener('click', () => download('excel'));
-  function download(kind) {
-    if (!state.validationCompany) return;
-    const a = document.createElement('a');
-    a.href = `/api/export/${kind}/${state.validationCompany}?year=${state.y}&month=${state.m}`;
-    a.download = '';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  $('export-pdf-btn').addEventListener('click', (e) => download('pdf', e.currentTarget));
+  $('export-excel-btn').addEventListener('click', (e) => download('excel', e.currentTarget));
+
+  // Fetched rather than navigated to, so that a failure shows as a message
+  // instead of downloading a file that contains the JSON error.
+  async function download(kind, btn) {
+    if (!state.validationCompany || btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/export/${kind}/${state.validationCompany}?year=${state.y}&month=${state.m}`, { credentials: 'include' });
+      if (!res.ok) {
+        let msg = `Erreur ${res.status}`;
+        try { msg = (await res.json()).error || msg; } catch (e) { /* not JSON */ }
+        throw new Error(msg);
+      }
+      const cd = res.headers.get('Content-Disposition') || '';
+      const m = cd.match(/filename\*=UTF-8''([^;]+)/) || cd.match(/filename="([^"]+)"/);
+      const name = m ? decodeURIComponent(m[1]) : `presences.${kind === 'pdf' ? 'pdf' : 'xlsx'}`;
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      toast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ── history ─────────────────────────────────────────────────────────────
@@ -1056,11 +1211,11 @@
       tb.innerHTML = '<tr class="empty-row"><td colspan="7">Aucune saisie enregistrée pour le moment.</td></tr>';
       return;
     }
-    tb.innerHTML = rows.map((r) => {
+    fillTable(tb, rows.map((r) => {
       const status = r.companyValidated ? 'Validé société' : (r.cadreValidated ? 'Validé cadre' : 'En cours');
       const tagCls = r.companyValidated ? 'tag-accent' : (r.cadreValidated ? 'tag-outline' : 'tag-neutral');
       return `<tr>
-        <td style="text-transform:capitalize">${MONTHS[r.month - 1]} ${r.year}</td>
+        <td class="cell-capitalize">${MONTHS[r.month - 1]} ${r.year}</td>
         <td class="cell-muted">${halfToDays(r.present)} j</td>
         <td class="cell-muted">${halfToDays(r.absent)} j</td>
         <td class="cell-muted">${halfToDays(r.conge)} j</td>
@@ -1068,7 +1223,7 @@
         <td><span class="tag ${tagCls}">${status}</span></td>
         <td class="cell-actions"><button class="btn btn-ghost" data-hist="${r.year}-${r.month}">Ouvrir</button></td>
       </tr>`;
-    }).join('');
+    }).join(''));
   }
 
   $('history-rows').addEventListener('click', (e) => {
@@ -1080,14 +1235,24 @@
   });
 
   // ── dialog ──────────────────────────────────────────────────────────────
+  let dialogOpener = null;
   function openDialog(html) {
+    dialogOpener = document.activeElement;
     $('dialog').innerHTML = html;
     $('dialog-backdrop').hidden = false;
+    const first = $('dialog').querySelector('input:not([disabled]), select:not([disabled])');
+    if (first) first.focus();
   }
   function closeDialog() {
     $('dialog-backdrop').hidden = true;
     $('dialog').innerHTML = '';
+    // back to the button that opened it, for keyboard users
+    if (dialogOpener && document.contains(dialogOpener)) dialogOpener.focus();
+    dialogOpener = null;
   }
+  window.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && !$('dialog-backdrop').hidden) closeDialog();
+  });
   $('dialog-backdrop').addEventListener('click', (e) => {
     if (e.target === $('dialog-backdrop') || e.target.closest('[data-close]')) closeDialog();
   });

@@ -15,7 +15,18 @@ const exportRoutes = require('./routes/export');
 const app = express();
 const PORT = process.env.PORT || 4790;
 
-app.use(express.json());
+app.disable('x-powered-by');
+// The API is also reachable on its own port, without the nginx headers.
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'same-origin',
+    'Cache-Control': 'no-store',
+  });
+  next();
+});
+app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
 if (process.env.CORS_ORIGIN) {
   app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }));
@@ -30,7 +41,21 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/validations', validationRoutes);
 app.use('/api/export', exportRoutes);
 
+app.use('/api', (req, res) => res.status(404).json({ error: 'Route inconnue' }));
+
+// Postgres errors caused by the request content rather than by the server.
+const CLIENT_PG_ERRORS = {
+  '22P02': 'Valeur invalide', // invalid_text_representation
+  '22007': 'Date invalide', // invalid_datetime_format
+  '22008': 'Date invalide', // datetime_field_overflow
+  '22001': 'Valeur trop longue', // string_data_right_truncation
+  '23503': 'Élément référencé introuvable', // foreign_key_violation
+};
+
 app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Corps de requête JSON invalide' });
+  if (err.type === 'entity.too.large') return res.status(413).json({ error: 'Requête trop volumineuse' });
+  if (CLIENT_PG_ERRORS[err.code]) return res.status(400).json({ error: CLIENT_PG_ERRORS[err.code] });
   console.error(err);
   res.status(500).json({ error: 'Erreur interne du serveur' });
 });

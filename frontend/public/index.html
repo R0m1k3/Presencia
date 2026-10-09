@@ -65,6 +65,7 @@
           <span id="user-meta" class="side-user-meta"></span>
         </span>
       </div>
+      <button id="my-password-btn" class="navitem"><i class="ni-ico ph ph-lock-simple"></i><span>Mon mot de passe</span></button>
       <button id="logout-btn" class="navitem"><i class="ni-ico ph ph-sign-out"></i><span>Déconnexion</span></button>
     </div>
   </aside>
@@ -73,7 +74,8 @@
     <div class="mobile-only mobile-head">
       <span class="brand-mark tiny"></span>
       <span id="screen-title" class="mobile-title"></span>
-      <button id="logout-btn-mobile" class="chipbtn">Quitter</button>
+      <button id="my-password-btn-mobile" class="chipbtn chipbtn-icon" aria-label="Changer mon mot de passe" title="Changer mon mot de passe"><i class="ph ph-lock-simple"></i></button>
+      <button id="logout-btn-mobile" class="chipbtn" aria-label="Se déconnecter"><i class="ph ph-sign-out"></i>Quitter</button>
     </div>
 
     <!-- ─── DASHBOARD ─── -->
@@ -134,7 +136,7 @@
         <div id="view-options" class="toolrow-items"></div>
         <span class="toolrow-right">
           <button id="fill-workdays-btn" class="btn btn-secondary">Remplir les jours ouvrés</button>
-          <button id="clear-month-btn" class="btn btn-secondary">Tout effacer</button>
+          <button id="clear-month-btn" class="btn btn-secondary btn-danger-ghost">Tout effacer</button>
         </span>
       </div>
 
@@ -282,11 +284,11 @@
 
 <!-- ══════════════ DIALOG ══════════════ -->
 <div id="dialog-backdrop" class="dialog-backdrop" hidden>
-  <div id="dialog" class="dialog"></div>
+  <div id="dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"></div>
 </div>
 
 <!-- ══════════════ TOAST ══════════════ -->
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast" aria-live="polite" hidden></div>
 
 <script src="js/app.js"></script>
 </body>

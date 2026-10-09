@@ -1,15 +1,14 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { isId, parseYearMonth: parseYM, monthStart, idParam } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
+router.param('companyId', idParam);
 
 function parseYearMonth(req) {
-  const year = parseInt(req.body?.year ?? req.query?.year, 10);
-  const month = parseInt(req.body?.month ?? req.query?.month, 10);
-  if (!year || !month || month < 1 || month > 12) return null;
-  return { year, month };
+  return parseYM(req.body?.year ?? req.query?.year, req.body?.month ?? req.query?.month);
 }
 
 // Cadre validates their own month.
@@ -19,6 +18,7 @@ router.post('/cadre', async (req, res) => {
 
   // Admin can validate on behalf of a cadre (e.g. corrections), otherwise self only.
   const targetUserId = req.user.role === 'admin' && req.body.user_id ? req.body.user_id : req.user.id;
+  if (!isId(String(targetUserId))) return res.status(400).json({ error: 'Utilisateur invalide' });
 
   const { rows: userRows } = await db.query('SELECT id, company_id FROM users WHERE id = $1', [targetUserId]);
   const target = userRows[0];
@@ -46,7 +46,7 @@ router.post('/cadre', async (req, res) => {
 router.post('/cadre/reopen', requireAdmin, async (req, res) => {
   const ym = parseYearMonth(req);
   const { user_id } = req.body || {};
-  if (!ym || !user_id) return res.status(400).json({ error: 'Paramètres invalides' });
+  if (!ym || !isId(String(user_id ?? ''))) return res.status(400).json({ error: 'Paramètres invalides' });
 
   await db.query(
     `INSERT INTO month_locks (user_id, year, month, cadre_validated, cadre_validated_at)
@@ -60,12 +60,11 @@ router.post('/cadre/reopen', requireAdmin, async (req, res) => {
 
 // Admin: status of every cadre in a company for a given month.
 router.get('/company/:companyId', requireAdmin, async (req, res) => {
-  const year = parseInt(req.query.year, 10);
-  const month = parseInt(req.query.month, 10);
+  const ym = parseYearMonth(req);
+  if (!ym) return res.status(400).json({ error: 'year et month requis' });
+  const { year, month } = ym;
   const companyId = req.params.companyId;
-  if (!year || !month) return res.status(400).json({ error: 'year et month requis' });
-
-  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const start = monthStart(ym);
   const { rows: cadres } = await db.query(
     `SELECT u.id, u.full_name, u.email,
             ml.cadre_validated, ml.cadre_validated_at,
@@ -103,9 +102,9 @@ router.get('/company/:companyId', requireAdmin, async (req, res) => {
 
 // Admin: one-shot overview of every company for a given month (dashboard).
 router.get('/overview', requireAdmin, async (req, res) => {
-  const year = parseInt(req.query.year, 10);
-  const month = parseInt(req.query.month, 10);
-  if (!year || !month) return res.status(400).json({ error: 'year et month requis' });
+  const ym = parseYearMonth(req);
+  if (!ym) return res.status(400).json({ error: 'year et month requis' });
+  const { year, month } = ym;
 
   const { rows } = await db.query(
     `SELECT c.id, c.name,
