@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { isId, isDate, parseYearMonth, monthStart } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -8,103 +9,105 @@ router.use(requireAuth);
 const STATUSES = ['present', 'absent', 'conge', 'rtt'];
 const PERIODS = ['AM', 'PM'];
 
-async function getTargetUser(req, requestedUserId) {
-  // Cadre can only ever act on themselves. Admin may act on any user.
-  if (req.user.role === 'admin' && requestedUserId) {
-    const { rows } = await db.query(
-      'SELECT id, role, company_id FROM users WHERE id = $1',
-      [requestedUserId]
-    );
-    return rows[0] || null;
+// Resolves whose planning a request acts on. A cadre can only ever act on
+// themselves; an admin may pass user_id to act on anyone. Sends the error
+// response and returns null when the request is not allowed.
+async function resolveTarget(req, res, requestedUserId) {
+  if (requestedUserId === undefined || requestedUserId === null || requestedUserId === '') {
+    return { id: req.user.id, company_id: req.user.companyId };
   }
-  return { id: req.user.id, role: req.user.role, company_id: req.user.companyId };
+  if (req.user.role !== 'admin') {
+    res.status(403).json({ error: 'Accès refusé' });
+    return null;
+  }
+  if (!isId(String(requestedUserId))) {
+    res.status(400).json({ error: 'Utilisateur invalide' });
+    return null;
+  }
+  const { rows } = await db.query('SELECT id, company_id FROM users WHERE id = $1', [requestedUserId]);
+  if (!rows[0]) {
+    res.status(404).json({ error: 'Utilisateur introuvable' });
+    return null;
+  }
+  return rows[0];
 }
 
-async function getMonthLock(userId, year, month) {
+async function monthState(target, { year, month }) {
   const { rows } = await db.query(
-    'SELECT cadre_validated, cadre_validated_at FROM month_locks WHERE user_id = $1 AND year = $2 AND month = $3',
-    [userId, year, month]
+    `SELECT
+       (SELECT row_to_json(ml) FROM (
+          SELECT cadre_validated, cadre_validated_at FROM month_locks
+          WHERE user_id = $1 AND year = $3 AND month = $4) ml) AS lock,
+       (SELECT row_to_json(cv) FROM (
+          SELECT admin_validated, admin_validated_at FROM company_month_validations
+          WHERE company_id = $2 AND year = $3 AND month = $4) cv) AS company`,
+    [target.id, target.company_id, year, month]
   );
-  return rows[0] || { cadre_validated: false, cadre_validated_at: null };
+  const lock = rows[0].lock || {};
+  const company = rows[0].company || {};
+  return {
+    cadreValidated: !!lock.cadre_validated,
+    cadreValidatedAt: lock.cadre_validated_at || null,
+    companyValidated: !!company.admin_validated,
+    companyValidatedAt: company.admin_validated_at || null,
+  };
 }
 
-async function getCompanyValidation(companyId, year, month) {
-  if (!companyId) return { admin_validated: false, admin_validated_at: null };
-  const { rows } = await db.query(
-    'SELECT admin_validated, admin_validated_at FROM company_month_validations WHERE company_id = $1 AND year = $2 AND month = $3',
-    [companyId, year, month]
-  );
-  return rows[0] || { admin_validated: false, admin_validated_at: null };
+// Same lock rules for every write: nobody edits a month the admin validated
+// for the company; a cadre cannot edit a month they validated themselves.
+// Sends a 423 and returns false when the month is locked.
+async function ensureWritable(req, res, target, ym) {
+  const st = await monthState(target, ym);
+  if (st.companyValidated) {
+    res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
+    return false;
+  }
+  if (req.user.role !== 'admin' && st.cadreValidated) {
+    res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
+    return false;
+  }
+  return true;
 }
+
+const ymOf = (date) => ({ year: Number(date.slice(0, 4)), month: Number(date.slice(5, 7)) });
 
 router.get('/', async (req, res) => {
-  const year = parseInt(req.query.year, 10);
-  const month = parseInt(req.query.month, 10);
-  if (!year || !month) return res.status(400).json({ error: 'year et month requis' });
+  const ym = parseYearMonth(req.query.year, req.query.month);
+  if (!ym) return res.status(400).json({ error: 'year et month requis' });
+  const target = await resolveTarget(req, res, req.query.user_id);
+  if (!target) return;
 
-  const requestedUserId = req.query.user_id;
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
-
-  const start = `${year}-${String(month).padStart(2, '0')}-01`;
-  const { rows } = await db.query(
-    `SELECT entry_date, period, status
-     FROM attendance_entries
-     WHERE user_id = $1
-       AND entry_date >= $2::date
-       AND entry_date < ($2::date + INTERVAL '1 month')
-     ORDER BY entry_date, period`,
-    [target.id, start]
-  );
-
-  const lock = await getMonthLock(target.id, year, month);
-  const companyValidation = await getCompanyValidation(target.company_id, year, month);
+  const [{ rows }, st] = await Promise.all([
+    db.query(
+      `SELECT entry_date, period, status
+       FROM attendance_entries
+       WHERE user_id = $1
+         AND entry_date >= $2::date
+         AND entry_date < ($2::date + INTERVAL '1 month')
+       ORDER BY entry_date, period`,
+      [target.id, monthStart(ym)]
+    ),
+    monthState(target, ym),
+  ]);
 
   res.json({
     userId: target.id,
-    entries: rows.map((r) => ({
-      date: r.entry_date.toISOString().slice(0, 10),
-      period: r.period,
-      status: r.status,
-    })),
-    cadreValidated: lock.cadre_validated,
-    cadreValidatedAt: lock.cadre_validated_at,
-    companyValidated: companyValidation.admin_validated,
-    companyValidatedAt: companyValidation.admin_validated_at,
-    editable:
-      req.user.role === 'admin'
-        ? !companyValidation.admin_validated
-        : !lock.cadre_validated && !companyValidation.admin_validated,
+    entries: rows.map((r) => ({ date: r.entry_date, period: r.period, status: r.status })),
+    ...st,
+    editable: req.user.role === 'admin'
+      ? !st.companyValidated
+      : !st.cadreValidated && !st.companyValidated,
   });
 });
 
 router.put('/', async (req, res) => {
   const { date, period, status, user_id: requestedUserId } = req.body || {};
-  if (!date || !PERIODS.includes(period) || !STATUSES.includes(status)) {
+  if (!isDate(date) || !PERIODS.includes(period) || !STATUSES.includes(status)) {
     return res.status(400).json({ error: 'Paramètres invalides' });
   }
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
-
-  const d = new Date(date + 'T00:00:00Z');
-  const year = d.getUTCFullYear();
-  const month = d.getUTCMonth() + 1;
-
-  const lock = await getMonthLock(target.id, year, month);
-  const companyValidation = await getCompanyValidation(target.company_id, year, month);
-
-  if (companyValidation.admin_validated) {
-    return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
-  }
-  if (req.user.role !== 'admin' && lock.cadre_validated) {
-    return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
-  }
+  const target = await resolveTarget(req, res, requestedUserId);
+  if (!target) return;
+  if (!(await ensureWritable(req, res, target, ymOf(date)))) return;
 
   await db.query(
     `INSERT INTO attendance_entries (user_id, entry_date, period, status, updated_at)
@@ -113,19 +116,14 @@ router.put('/', async (req, res) => {
      DO UPDATE SET status = EXCLUDED.status, updated_at = now()`,
     [target.id, date, period, status]
   );
-
   res.json({ ok: true });
 });
 
 // Per-month aggregates for the history view: half-day counts by status plus
 // both validation flags, most recent month first.
 router.get('/history', async (req, res) => {
-  const requestedUserId = req.query.user_id;
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  const target = await resolveTarget(req, res, req.query.user_id);
+  if (!target) return;
 
   const { rows } = await db.query(
     `WITH months AS (
@@ -163,115 +161,64 @@ router.get('/history', async (req, res) => {
   })));
 });
 
-// Clear every entry of a month (the « Tout effacer » action). Same lock rules
-// as writes.
+// Clear every entry of a month (the « Tout effacer » action).
 router.delete('/month', async (req, res) => {
   const { year, month, user_id: requestedUserId } = req.body || {};
-  const y = parseInt(year, 10);
-  const m = parseInt(month, 10);
-  if (!y || !m || m < 1 || m > 12) return res.status(400).json({ error: 'Paramètres invalides' });
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  const ym = parseYearMonth(year, month);
+  if (!ym) return res.status(400).json({ error: 'Paramètres invalides' });
+  const target = await resolveTarget(req, res, requestedUserId);
+  if (!target) return;
+  if (!(await ensureWritable(req, res, target, ym))) return;
 
-  const lock = await getMonthLock(target.id, y, m);
-  const companyValidation = await getCompanyValidation(target.company_id, y, m);
-  if (companyValidation.admin_validated) {
-    return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
-  }
-  if (req.user.role !== 'admin' && lock.cadre_validated) {
-    return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
-  }
-
-  const start = `${y}-${String(m).padStart(2, '0')}-01`;
   await db.query(
     `DELETE FROM attendance_entries
      WHERE user_id = $1 AND entry_date >= $2::date AND entry_date < ($2::date + INTERVAL '1 month')`,
-    [target.id, start]
+    [target.id, monthStart(ym)]
   );
   res.json({ ok: true });
 });
 
-// Bulk upsert (e.g. « fill all empty weekdays with présent »). All entries
-// must pass the same lock checks as single writes; months are checked once
-// per distinct month present in the payload.
+// Bulk upsert (e.g. « fill all empty weekdays with présent »). Every month
+// present in the payload must pass the same lock checks as single writes.
 router.put('/bulk', async (req, res) => {
   const { entries, user_id: requestedUserId } = req.body || {};
   if (!Array.isArray(entries) || entries.length === 0 || entries.length > 200) {
     return res.status(400).json({ error: 'Paramètres invalides' });
   }
-  for (const e of entries) {
-    if (!e || !e.date || !PERIODS.includes(e.period) || !STATUSES.includes(e.status)) {
-      return res.status(400).json({ error: 'Paramètres invalides' });
-    }
+  if (entries.some((e) => !e || !isDate(e.date) || !PERIODS.includes(e.period) || !STATUSES.includes(e.status))) {
+    return res.status(400).json({ error: 'Paramètres invalides' });
   }
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
+  const target = await resolveTarget(req, res, requestedUserId);
+  if (!target) return;
 
-  const months = new Set(entries.map((e) => e.date.slice(0, 7)));
-  for (const ym of months) {
-    const [year, month] = ym.split('-').map(Number);
-    const lock = await getMonthLock(target.id, year, month);
-    const companyValidation = await getCompanyValidation(target.company_id, year, month);
-    if (companyValidation.admin_validated) {
-      return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
-    }
-    if (req.user.role !== 'admin' && lock.cadre_validated) {
-      return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
-    }
+  for (const ym of new Set(entries.map((e) => e.date.slice(0, 7)))) {
+    if (!(await ensureWritable(req, res, target, ymOf(ym)))) return;
   }
 
-  const client = await db.pool.connect();
-  try {
-    await client.query('BEGIN');
-    for (const e of entries) {
-      await client.query(
-        `INSERT INTO attendance_entries (user_id, entry_date, period, status, updated_at)
-         VALUES ($1, $2, $3, $4, now())
-         ON CONFLICT (user_id, entry_date, period)
-         DO UPDATE SET status = EXCLUDED.status, updated_at = now()`,
-        [target.id, e.date, e.period, e.status]
-      );
-    }
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  // One statement for the whole batch. A half-day listed twice would make
+  // ON CONFLICT hit the same row twice and fail, so the last one wins.
+  const byKey = new Map(entries.map((e) => [`${e.date}|${e.period}`, e]));
+  const list = [...byKey.values()];
+  await db.query(
+    `INSERT INTO attendance_entries (user_id, entry_date, period, status, updated_at)
+     SELECT $1, d, p::half_day_period, s::attendance_status, now()
+     FROM unnest($2::date[], $3::text[], $4::text[]) AS t(d, p, s)
+     ON CONFLICT (user_id, entry_date, period)
+     DO UPDATE SET status = EXCLUDED.status, updated_at = now()`,
+    [target.id, list.map((e) => e.date), list.map((e) => e.period), list.map((e) => e.status)]
+  );
 
-  res.json({ ok: true, count: entries.length });
+  res.json({ ok: true, count: list.length });
 });
 
 router.delete('/', async (req, res) => {
   const { date, period, user_id: requestedUserId } = req.body || {};
-  if (!date || !PERIODS.includes(period)) {
+  if (!isDate(date) || !PERIODS.includes(period)) {
     return res.status(400).json({ error: 'Paramètres invalides' });
   }
-  if (requestedUserId && req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Accès refusé' });
-  }
-  const target = await getTargetUser(req, requestedUserId);
-  if (!target) return res.status(404).json({ error: 'Utilisateur introuvable' });
-
-  const d = new Date(date + 'T00:00:00Z');
-  const year = d.getUTCFullYear();
-  const month = d.getUTCMonth() + 1;
-  const lock = await getMonthLock(target.id, year, month);
-  const companyValidation = await getCompanyValidation(target.company_id, year, month);
-
-  if (companyValidation.admin_validated) {
-    return res.status(423).json({ error: 'Ce mois a été validé par l’administrateur et est verrouillé' });
-  }
-  if (req.user.role !== 'admin' && lock.cadre_validated) {
-    return res.status(423).json({ error: 'Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.' });
-  }
+  const target = await resolveTarget(req, res, requestedUserId);
+  if (!target) return;
+  if (!(await ensureWritable(req, res, target, ymOf(date)))) return;
 
   await db.query(
     'DELETE FROM attendance_entries WHERE user_id = $1 AND entry_date = $2 AND period = $3',

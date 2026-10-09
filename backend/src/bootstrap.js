@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
+const { initJwtSecret } = require('./middleware/auth');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -32,13 +33,17 @@ async function runMigrations() {
   );
   if (rows[0].exists) {
     console.log('Schéma déjà initialisé.');
-    return;
+  } else {
+    console.log('Initialisation du schéma de base de données...');
+    await db.query(readMigration('001_init.sql'));
+    console.log('Schéma créé.');
   }
-  const sqlPath = path.join(__dirname, '..', 'migrations', '001_init.sql');
-  const sql = fs.readFileSync(sqlPath, 'utf8');
-  console.log('Initialisation du schéma de base de données...');
-  await db.query(sql);
-  console.log('Schéma créé.');
+  // Idempotent, so safe on every start: brings existing databases up to date.
+  await db.query(readMigration('002_security.sql'));
+}
+
+function readMigration(name) {
+  return fs.readFileSync(path.join(__dirname, '..', 'migrations', name), 'utf8');
 }
 
 async function seedAdmin() {
@@ -60,7 +65,7 @@ async function seedAdmin() {
   console.log('========================================================');
   console.log(' Compte administrateur créé :');
   console.log(` Email    : ${email}`);
-  console.log(` Mot de passe : ${password}`);
+  console.log(' Mot de passe : celui de ADMIN_PASSWORD');
   console.log(' Merci de le changer après la première connexion.');
   console.log('========================================================');
 }
@@ -68,6 +73,7 @@ async function seedAdmin() {
 async function bootstrap() {
   await waitForDb();
   await runMigrations();
+  await initJwtSecret();
   await seedAdmin();
 }
 

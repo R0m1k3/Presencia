@@ -19,7 +19,7 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 
 ## Démarrage
 
-Toute la configuration (ports, mot de passe base de données, `JWT_SECRET`, identifiants admin) est définie directement dans `docker-compose.yml` — il n'y a pas de fichier `.env` à créer. Éditez les valeurs dans `docker-compose.yml` avant le premier démarrage (au minimum `POSTGRES_PASSWORD`, `JWT_SECRET` et `ADMIN_PASSWORD`), puis :
+Toute la configuration (ports, mot de passe base de données, `JWT_SECRET`, identifiants admin) est définie directement dans `docker-compose.yml` — il n'y a pas de fichier `.env` à créer. Éditez les valeurs dans `docker-compose.yml` avant le premier démarrage (au minimum `POSTGRES_PASSWORD` et `ADMIN_PASSWORD`), puis :
 
 ```bash
 docker compose up -d --build
@@ -27,15 +27,24 @@ docker compose up -d --build
 
 Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
-| Service   | Port hôte |
-|-----------|-----------|
-| Frontend  | 8781      |
-| API       | 4790      |
-| Postgres  | 6543      |
+| Service   | Port hôte | Accessible depuis        |
+|-----------|-----------|--------------------------|
+| Frontend  | 8781      | le réseau                |
+| API       | 4790      | la machine hôte seulement |
+| Postgres  | 6543      | la machine hôte seulement |
+
+Le navigateur passe toujours par le frontend (qui proxifie `/api`) ; l'API et
+Postgres ne sont publiés que sur `127.0.0.1`, pour l'administration locale
+(psql, sauvegardes).
+
+**`JWT_SECRET`** : laissez-le vide pour que l'API génère un secret aléatoire,
+conservé en base (les sessions survivent aux redémarrages). Si vous le
+renseignez, il doit faire au moins 32 caractères aléatoires ; une valeur
+d'exemple ou trop courte est ignorée.
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `docker-compose.yml` (par défaut `admin@presencia.local` / `ChangeMe123!`). **Changez ce mot de passe après la première connexion** (aucune page de changement de mot de passe en libre-service n'est fournie côté cadre ; un administrateur peut réinitialiser le mot de passe de n'importe quel compte depuis l'onglet Utilisateurs).
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `docker-compose.yml` (par défaut `admin@presencia.local` / `ChangeMe123!`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
 
 Si vous changez les identifiants admin dans `docker-compose.yml` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
@@ -55,6 +64,15 @@ Si vous changez les identifiants admin dans `docker-compose.yml` *après* un pre
 - Dans le sélecteur d'une demi-journée : touches **1** à **4** pour les statuts, **⌫** pour effacer, **↵** pour appliquer à la journée entière.
 - En fin de mois, cliquer sur **« Valider mon mois »** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
 - **Historique** : retrouver les mois précédents et leurs totaux, et les rouvrir en lecture.
+
+## Sécurité
+
+- Mots de passe hachés (bcrypt), 8 caractères minimum.
+- Session par cookie `httpOnly` / `SameSite=Lax` (12 h). Passez `COOKIE_SECURE: "true"` si l'application est servie en HTTPS.
+- Le compte est relu en base à chaque requête : désactiver un compte, changer son rôle ou réinitialiser son mot de passe prend effet immédiatement, sans attendre l'expiration de la session.
+- Connexion limitée à 10 échecs par adresse e-mail sur 15 minutes.
+- Un administrateur ne peut ni désactiver ni rétrograder son propre compte.
+- En-têtes de sécurité (CSP, `X-Frame-Options`, `nosniff`…) posés par Nginx et par l'API.
 
 ## Architecture technique
 

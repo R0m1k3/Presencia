@@ -52,9 +52,12 @@ body { margin: 0; }
 /* ── mobile chrome ── */
 .mobile-head { align-items: center; gap: 10px; margin-bottom: 14px; }
 .mobile-title { font-size: 15px; font-weight: 500; margin-right: auto; }
-.mobile-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--color-surface); border-top: 1px solid var(--color-divider); padding: 6px 8px; justify-content: space-around; }
-.mobile-nav .navitem { flex-direction: column; gap: 3px; justify-content: center; text-align: center; padding: 6px 4px; font-size: 10px; }
+.mobile-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; background: var(--color-surface); border-top: 1px solid var(--color-divider); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); justify-content: space-around; gap: 2px; overflow-x: auto; }
+.mobile-nav .navitem { position: relative; flex: 1 1 0; min-width: 52px; flex-direction: column; gap: 3px; justify-content: center; text-align: center; padding: 6px 2px; font-size: 10px; white-space: nowrap; }
 .mobile-nav .navitem .ph { font-size: 19px; }
+.mobile-nav .navitem .ni-badge { position: absolute; top: 2px; left: calc(50% + 6px); margin: 0; padding: 0 5px; font-size: 10px; line-height: 15px; }
+.mobile-head .chipbtn .ph { font-size: 15px; }
+.chipbtn-icon { padding-inline: 9px; }
 
 /* ── generic stacks / heads ── */
 .stack-20 { display: flex; flex-direction: column; gap: 20px; }
@@ -72,6 +75,40 @@ body { margin: 0; }
 .cell-muted { color: var(--color-neutral-700); }
 .cell-actions { text-align: right; white-space: nowrap; }
 .empty-row td { color: var(--color-neutral-700); font-size: 13px; }
+.cell-capitalize { text-transform: capitalize; }
+.field-hint { display: block; margin-top: 4px; font-size: 12px; color: var(--color-neutral-700); }
+
+/* destructive actions read as such without shouting */
+.btn-danger-ghost { color: #a8412c; }
+.btn-danger-ghost:hover:not(:disabled) { background: #fbeae6; }
+
+/* pending request on a button (forms, exports) */
+.btn[aria-busy="true"], .btn:disabled { cursor: progress; }
+.btn:disabled:not([aria-busy]) { cursor: not-allowed; }
+
+/* ── tables as cards on phones ──
+   A 5–6 column table cannot fit 390 px; scrolling it sideways hides the
+   actions at the far end. Each row becomes a card instead, every cell
+   labelled with its column title (data-label, set by fillTable()). */
+@media (max-width: 640px) {
+  .content table.table { min-width: 0; }
+  .content .card:has(> table.table) { overflow-x: visible; }
+  .table-card { padding: 4px 12px; }
+  .table thead { display: none; }
+  .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+  .table tbody tr { padding: 10px 0; }
+  .table tbody tr:hover { background: linear-gradient(color-mix(in srgb, var(--color-text) 8%, transparent), color-mix(in srgb, var(--color-text) 8%, transparent)) no-repeat bottom / 100% 1px; }
+  .table tbody tr:last-child { background: none; }
+  .table td { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 0; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+  .table td::before { content: attr(data-label); flex: none; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--color-neutral-700); text-align: left; }
+  .table td:first-child { font-weight: 500; justify-content: flex-start; text-align: left; }
+  .table td:first-child::before { display: none; }
+  .table td.cell-actions { justify-content: flex-end; flex-wrap: wrap; gap: 4px; white-space: normal; padding-top: 6px; }
+  .table td.cell-actions::before { display: none; }
+  .table td.cell-actions .btn { min-height: 36px; }
+  .empty-row td { justify-content: flex-start; text-align: left; }
+  .empty-row td::before { display: none; }
+}
 
 /* ── dashboard ── */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
