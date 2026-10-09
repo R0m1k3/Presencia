@@ -837,6 +837,14 @@
         if (edit) await api(`/users/${user.id}`, { method: 'PUT', body });
         else await api('/users', { method: 'POST', body });
         closeDialog();
+        if (!edit) {
+          // The company filter and search are shared with "Plannings": a leftover
+          // value would hide the account just created, as if it had not been saved.
+          state.filterCompany = 'all';
+          state.search = '';
+          $('us-co').value = 'all';
+          $('us-q').value = '';
+        }
         toast('Utilisateur enregistré');
         await refreshUsers();
       } catch (err) { toast(err.message, 'error'); }
