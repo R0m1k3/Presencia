@@ -41,7 +41,8 @@ function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.COOKIE_SECURE === 'true',
+    // Secure by default; COOKIE_SECURE=false only for plain-HTTP setups.
+    secure: process.env.COOKIE_SECURE !== 'false',
     maxAge: 12 * 60 * 60 * 1000,
     path: '/',
   });

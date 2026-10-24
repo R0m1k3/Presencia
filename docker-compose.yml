@@ -1,16 +1,20 @@
+# Les secrets ne sont plus écrits ici : copiez .env.example en .env (à côté de
+# ce fichier) et renseignez-le. docker compose lit .env automatiquement.
 services:
   presencia-db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: presencia
-      POSTGRES_PASSWORD: R4dsITu0vuigNQQwNlvj0agVyHupSyX
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Définissez POSTGRES_PASSWORD dans .env}
       POSTGRES_DB: presencia
     volumes:
       - presencia_pgdata:/var/lib/postgresql/data
     ports:
       # Reachable from this host only (psql, backups), not from the network.
       - "127.0.0.1:6543:5432"
+    networks:
+      - presencia_private
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U presencia"]
       interval: 5s
@@ -28,18 +32,25 @@ services:
       PGHOST: presencia-db
       PGPORT: 5432
       PGUSER: presencia
-      PGPASSWORD: R4dsITu0vuigNQQwNlvj0agVyHupSyX
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Définissez POSTGRES_PASSWORD dans .env}
       PGDATABASE: presencia
       # Leave empty to let the API generate a random secret, stored in the
       # database. If set, it must be at least 32 random characters.
-      JWT_SECRET: ""
-      COOKIE_SECURE: "false"
-      ADMIN_EMAIL: michaelschal@ffest.fr
-      ADMIN_PASSWORD: Lapîn2509
-      ADMIN_NAME: Michael
+      JWT_SECRET: ${JWT_SECRET:-}
+      # Secure cookies by default; set COOKIE_SECURE=false in .env only if the
+      # application is served over plain HTTP.
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      # Only used on the very first start, to create the admin account.
+      # Without ADMIN_PASSWORD a random password is printed once in the logs.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
     ports:
       # The browser goes through the frontend; direct API access stays local.
       - "127.0.0.1:4790:4790"
+    networks:
+      - presencia_private
+      - nginx
 
   presencia-frontend:
     build: ./frontend
@@ -48,11 +59,17 @@ services:
       - presencia-backend
     ports:
       - "8781:80"
+    networks:
+      - nginx
 
 networks:
-  default:
+  # Shared with the host's reverse proxy: only the API and the frontend join it.
+  nginx:
     name: nginx_default
     external: true
+  # Private to this stack: the database is reachable only from the API. (Not
+  # "internal: true", which would disable the 127.0.0.1 port mapping above.)
+  presencia_private:
 
 volumes:
   presencia_pgdata:

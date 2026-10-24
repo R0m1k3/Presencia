@@ -19,9 +19,10 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 
 ## Démarrage
 
-Toute la configuration (ports, mot de passe base de données, `JWT_SECRET`, identifiants admin) est définie directement dans `docker-compose.yml` — il n'y a pas de fichier `.env` à créer. Éditez les valeurs dans `docker-compose.yml` avant le premier démarrage (au minimum `POSTGRES_PASSWORD` et `ADMIN_PASSWORD`), puis :
+Les secrets (mot de passe base de données, identifiants admin…) ne sont pas dans `docker-compose.yml` : ils sont lus dans un fichier `.env` à côté de lui (non versionné). Voir « Sécurité / variables obligatoires » ci-dessous.
 
 ```bash
+cp .env.example .env   # puis renseignez au minimum POSTGRES_PASSWORD
 docker compose up -d --build
 ```
 
@@ -44,9 +45,9 @@ d'exemple ou trop courte est ignorée.
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `docker-compose.yml` (par défaut `admin@presencia.local` / `ChangeMe123!`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (e-mail par défaut `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-backend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
 
-Si vous changez les identifiants admin dans `docker-compose.yml` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
+Si vous changez les identifiants admin dans `.env` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
 ## Utilisation
 
@@ -68,11 +69,26 @@ Si vous changez les identifiants admin dans `docker-compose.yml` *après* un pre
 ## Sécurité
 
 - Mots de passe hachés (bcrypt), 8 caractères minimum.
-- Session par cookie `httpOnly` / `SameSite=Lax` (12 h). Passez `COOKIE_SECURE: "true"` si l'application est servie en HTTPS.
+- Session par cookie `httpOnly` / `SameSite=Lax` / `Secure` (12 h). Mettez `COOKIE_SECURE=false` dans `.env` uniquement si l'application est servie en HTTP simple.
 - Le compte est relu en base à chaque requête : désactiver un compte, changer son rôle ou réinitialiser son mot de passe prend effet immédiatement, sans attendre l'expiration de la session.
 - Connexion limitée à 10 échecs par adresse e-mail sur 15 minutes.
 - Un administrateur ne peut ni désactiver ni rétrograder son propre compte.
 - En-têtes de sécurité (CSP, `X-Frame-Options`, `nosniff`…) posés par Nginx et par l'API.
+
+### Sécurité / variables obligatoires
+
+À définir dans `.env` (modèle : `.env.example`) :
+
+| Variable | Obligatoire | Rôle |
+|----------|-------------|------|
+| `POSTGRES_PASSWORD` | oui (`docker compose` refuse de démarrer sans) | mot de passe Postgres, partagé par la base et l'API |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | non, premier démarrage seulement | compte admin initial ; inutiles (et à retirer) une fois le compte créé |
+| `COOKIE_SECURE` | non (`true` par défaut) | `false` uniquement si le site est servi en HTTP simple |
+| `JWT_SECRET` | non | vide = secret aléatoire conservé en base |
+
+Sur une installation existante, mettez dans `POSTGRES_PASSWORD` le mot de passe avec lequel la base a été créée, ou changez-le d'abord (`ALTER USER presencia PASSWORD '...'`) — l'ancien mot de passe figure dans l'historique git.
+
+Réseaux : seuls l'API et le frontend rejoignent le réseau partagé `nginx_default` ; Postgres n'est joignable que par l'API, sur un réseau privé à la stack.
 
 ## Architecture technique
 

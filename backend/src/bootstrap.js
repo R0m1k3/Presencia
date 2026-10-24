@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -46,15 +47,29 @@ function readMigration(name) {
   return fs.readFileSync(path.join(__dirname, '..', 'migrations', name), 'utf8');
 }
 
+// ADMIN_EMAIL / ADMIN_PASSWORD only matter on the very first start (no admin
+// in the database yet). Without ADMIN_PASSWORD a random password is generated
+// and printed once in the logs, so no known default password is ever seeded.
 async function seedAdmin() {
   const { rows } = await db.query(
     "SELECT id FROM users WHERE role = 'admin' LIMIT 1"
   );
-  if (rows.length > 0) return;
+  if (rows.length > 0) {
+    if (process.env.ADMIN_PASSWORD) {
+      console.warn(
+        'ADMIN_PASSWORD ignoré : un compte administrateur existe déjà. ' +
+          'Vous pouvez retirer ADMIN_EMAIL / ADMIN_PASSWORD du fichier .env.'
+      );
+    }
+    return;
+  }
 
   const email = process.env.ADMIN_EMAIL || 'admin@presencia.local';
-  const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
   const fullName = process.env.ADMIN_NAME || 'Administrateur';
+  const generated = !process.env.ADMIN_PASSWORD;
+  const password = generated
+    ? crypto.randomBytes(18).toString('base64url')
+    : process.env.ADMIN_PASSWORD;
 
   const hash = await bcrypt.hash(password, 10);
   await db.query(
@@ -65,7 +80,11 @@ async function seedAdmin() {
   console.log('========================================================');
   console.log(' Compte administrateur créé :');
   console.log(` Email    : ${email}`);
-  console.log(' Mot de passe : celui de ADMIN_PASSWORD');
+  if (generated) {
+    console.log(` Mot de passe (généré, affiché une seule fois) : ${password}`);
+  } else {
+    console.log(' Mot de passe : celui de ADMIN_PASSWORD');
+  }
   console.log(' Merci de le changer après la première connexion.');
   console.log('========================================================');
 }
