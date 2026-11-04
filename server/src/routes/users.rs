@@ -69,7 +69,9 @@ fn company_param(p: &Profile) -> Result<Option<i32>, ApiError> {
 }
 
 fn db_error(e: sqlx::Error) -> ApiError {
-    ApiError::from(e).on_pg("23505", 409, "Cet email existe déjà").on_pg("23503", 400, "Société introuvable")
+    ApiError::from(e)
+        .on_pg("23505", 409, "Cet email existe déjà")
+        .on_pg("23503", 400, "Société introuvable")
 }
 
 pub async fn list(c: &Ctx) -> ApiResult {
@@ -85,22 +87,40 @@ pub async fn list(c: &Ctx) -> ApiResult {
          LEFT JOIN companies c ON c.id = u.company_id
          {}
          ORDER BY u.full_name",
-        if filter.is_some() { "WHERE u.company_id = $1" } else { "" }
+        if filter.is_some() {
+            "WHERE u.company_id = $1"
+        } else {
+            ""
+        }
     );
-    let mut q = sqlx::query_as::<_, (i32, String, String, String, Option<i32>, bool, DateTime<Utc>, Option<String>)>(&sql);
+    let mut q = sqlx::query_as::<
+        _,
+        (
+            i32,
+            String,
+            String,
+            String,
+            Option<i32>,
+            bool,
+            DateTime<Utc>,
+            Option<String>,
+        ),
+    >(&sql);
     if let Some(id) = filter {
         q = q.bind(id);
     }
     let rows = q.fetch_all(&c.st.pool).await?;
     let out: Vec<Value> = rows
         .into_iter()
-        .map(|(id, full_name, email, role, company_id, active, created_at, company_name)| {
-            json!({
-                "id": id, "full_name": full_name, "email": email, "role": role,
-                "company_id": company_id, "active": active, "created_at": js_date(created_at),
-                "company_name": company_name,
-            })
-        })
+        .map(
+            |(id, full_name, email, role, company_id, active, created_at, company_name)| {
+                json!({
+                    "id": id, "full_name": full_name, "email": email, "role": role,
+                    "company_id": company_id, "active": active, "created_at": js_date(created_at),
+                    "company_name": company_name,
+                })
+            },
+        )
         .collect();
     ok_json(&out)
 }
@@ -173,7 +193,10 @@ pub async fn password(c: &Ctx) -> ApiResult {
     }
     let res = ok_json(&json!({ "ok": true }))?;
     if c.user().id == c.id {
-        return Ok(with_cookie(res, set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), c.id))));
+        return Ok(with_cookie(
+            res,
+            set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), c.id)),
+        ));
     }
     Ok(res)
 }
@@ -187,7 +210,13 @@ pub async fn delete(c: &Ctx) -> ApiResult {
         .execute(&c.st.pool)
         .await
         // Referenced as the author of a company validation.
-        .map_err(|e| ApiError::from(e).on_pg("23503", 409, "Compte référencé par des validations : désactivez-le plutôt"))?
+        .map_err(|e| {
+            ApiError::from(e).on_pg(
+                "23503",
+                409,
+                "Compte référencé par des validations : désactivez-le plutôt",
+            )
+        })?
         .rows_affected();
     if n == 0 {
         return fail(404, "Utilisateur introuvable");

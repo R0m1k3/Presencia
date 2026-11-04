@@ -14,11 +14,20 @@ fn peer(s: &str) -> SocketAddr {
 #[test]
 fn proxy_addr_rules() {
     // Direct client: X-Forwarded-For is ignored.
-    assert_eq!(client_ip(&peer("203.0.113.9:1"), Some("10.0.0.1")), "::ffff:203.0.113.9");
+    assert_eq!(
+        client_ip(&peer("203.0.113.9:1"), Some("10.0.0.1")),
+        "::ffff:203.0.113.9"
+    );
     // Public client behind the proxies.
-    assert_eq!(client_ip(&peer("172.18.0.3:1"), Some("198.51.100.7, 172.18.0.1")), "198.51.100.7");
+    assert_eq!(
+        client_ip(&peer("172.18.0.3:1"), Some("198.51.100.7, 172.18.0.1")),
+        "198.51.100.7"
+    );
     // A spoofed left-most hop does not win over the first untrusted one.
-    assert_eq!(client_ip(&peer("172.18.0.3:1"), Some("1.1.1.1, 198.51.100.7")), "198.51.100.7");
+    assert_eq!(
+        client_ip(&peer("172.18.0.3:1"), Some("1.1.1.1, 198.51.100.7")),
+        "198.51.100.7"
+    );
     // LAN client behind the proxy keeps its own address.
     assert_eq!(client_ip(&peer("172.18.0.3:1"), Some("192.168.1.20")), "192.168.1.20");
     assert_eq!(client_ip(&peer("[::ffff:172.18.0.3]:1"), None), "::ffff:172.18.0.3");

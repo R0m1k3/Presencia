@@ -1,6 +1,9 @@
 //! Presencia API: Rust port of the Node/Express backend (commit f760cf6),
 //! same JSON contract and same database.
 
+// Query rows are read as tuples, in the column order of the SQL next to them.
+#![allow(clippy::type_complexity)]
+
 pub mod auth;
 pub mod body;
 pub mod bootstrap;

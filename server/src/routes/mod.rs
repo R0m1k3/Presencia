@@ -90,12 +90,33 @@ enum Seg {
 
 #[derive(Clone, Copy)]
 enum R {
-    Login, Logout, Me, Password,
-    CompanyList, CompanyCreate, CompanyUpdate, CompanyDelete,
-    UserList, UserCreate, UserUpdate, UserPassword, UserDelete,
-    AttGet, AttPut, AttHistory, AttDeleteMonth, AttBulk, AttDelete,
-    ValCadre, ValCadreReopen, ValCompany, ValOverview, ValCompanyValidate, ValCompanyReopen,
-    ExportExcel, ExportPdf,
+    Login,
+    Logout,
+    Me,
+    Password,
+    CompanyList,
+    CompanyCreate,
+    CompanyUpdate,
+    CompanyDelete,
+    UserList,
+    UserCreate,
+    UserUpdate,
+    UserPassword,
+    UserDelete,
+    AttGet,
+    AttPut,
+    AttHistory,
+    AttDeleteMonth,
+    AttBulk,
+    AttDelete,
+    ValCadre,
+    ValCadreReopen,
+    ValCompany,
+    ValOverview,
+    ValCompanyValidate,
+    ValCompanyReopen,
+    ExportExcel,
+    ExportPdf,
 }
 
 struct Route {
@@ -120,11 +141,21 @@ struct Mount {
 }
 
 const fn rt(m: M, segs: &'static [Seg], r: R) -> Route {
-    Route { m, segs, admin: false, r }
+    Route {
+        m,
+        segs,
+        admin: false,
+        r,
+    }
 }
 
 const fn admin(m: M, segs: &'static [Seg], r: R) -> Route {
-    Route { m, segs, admin: true, r }
+    Route {
+        m,
+        segs,
+        admin: true,
+        r,
+    }
 }
 
 use Seg::{Id, Lit};
@@ -264,14 +295,20 @@ fn cors_headers(origin: &str, h: &mut HeaderMap) {
         h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, o);
     }
     h.append(header::VARY, HeaderValue::from_static("Origin"));
-    h.insert(header::ACCESS_CONTROL_ALLOW_CREDENTIALS, HeaderValue::from_static("true"));
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+        HeaderValue::from_static("true"),
+    );
 }
 
 fn cors_preflight(origin: &str, req_headers: &HeaderMap) -> Response {
     let mut res = StatusCode::NO_CONTENT.into_response();
     let h = res.headers_mut();
     cors_headers(origin, h);
-    h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET,HEAD,PUT,PATCH,POST,DELETE"));
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET,HEAD,PUT,PATCH,POST,DELETE"),
+    );
     if let Some(v) = req_headers.get(header::ACCESS_CONTROL_REQUEST_HEADERS) {
         h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, v.clone());
         h.append(header::VARY, HeaderValue::from_static("Access-Control-Request-Headers"));
@@ -286,7 +323,10 @@ fn options_response(methods: &[&str]) -> Response {
     let mut res = (StatusCode::OK, allow.clone()).into_response();
     let h = res.headers_mut();
     h.insert(header::ALLOW, HeaderValue::from_str(&allow).unwrap());
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
     res
 }
 
@@ -296,14 +336,25 @@ fn route_unknown() -> Response {
 
 /// Express' final handler, for paths outside `/api`.
 fn cannot(method: &Method, path: &str) -> Response {
-    let path = path.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;");
+    let path = path
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;");
     let body = format!(
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot {method} {path}</pre>\n</body>\n</html>\n"
     );
     let mut res = (StatusCode::NOT_FOUND, body).into_response();
     let h = res.headers_mut();
-    h.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
-    h.insert("content-security-policy", HeaderValue::from_static("default-src 'none'"));
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    h.insert(
+        "content-security-policy",
+        HeaderValue::from_static("default-src 'none'"),
+    );
     res
 }
 
@@ -311,11 +362,16 @@ fn cannot(method: &Method, path: &str) -> Response {
 fn decode_param(raw: &str) -> Option<String> {
     let b = raw.as_bytes();
     for (i, c) in b.iter().enumerate() {
-        if *c == b'%' && !(b.get(i + 1).is_some_and(u8::is_ascii_hexdigit) && b.get(i + 2).is_some_and(u8::is_ascii_hexdigit)) {
+        if *c == b'%'
+            && !(b.get(i + 1).is_some_and(u8::is_ascii_hexdigit) && b.get(i + 2).is_some_and(u8::is_ascii_hexdigit))
+        {
             return None;
         }
     }
-    percent_encoding::percent_decode_str(raw).decode_utf8().ok().map(|s| s.into_owned())
+    percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .ok()
+        .map(|s| s.into_owned())
 }
 
 /// `qs`-like query parsing: repeated keys and `k[]` give arrays, `k[x]` objects.
@@ -323,7 +379,9 @@ pub fn parse_query(q: Option<&str>) -> Value {
     let mut out = Map::new();
     let decode = |s: &str| {
         let s = s.replace('+', " ");
-        percent_encoding::percent_decode_str(&s).decode_utf8_lossy().into_owned()
+        percent_encoding::percent_decode_str(&s)
+            .decode_utf8_lossy()
+            .into_owned()
     };
     for pair in q.unwrap_or("").split('&').filter(|p| !p.is_empty()) {
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
@@ -331,7 +389,10 @@ pub fn parse_query(q: Option<&str>) -> Value {
         let bracket = k.find('[').filter(|&i| i > 0 && k.ends_with(']'));
         if let Some(i) = bracket {
             let (base, sub) = (k[..i].to_string(), k[i + 1..k.len() - 1].to_string());
-            let is_index = sub.is_empty() || (sub.len() <= 2 && sub.bytes().all(|c| c.is_ascii_digit()) && sub.parse::<u32>().is_ok_and(|n| n <= 20));
+            let is_index = sub.is_empty()
+                || (sub.len() <= 2
+                    && sub.bytes().all(|c| c.is_ascii_digit())
+                    && sub.parse::<u32>().is_ok_and(|n| n <= 20));
             match out.get_mut(&base) {
                 Some(Value::Array(a)) if is_index => a.push(v),
                 Some(Value::Object(o)) => {
@@ -375,10 +436,10 @@ pub async fn dispatch(st: &AppState, peer: SocketAddr, req: Request) -> Response
     };
 
     let cors = st.cfg.cors_origin.clone();
-    if let Some(origin) = &cors {
-        if method == Method::OPTIONS {
-            return cors_preflight(origin, &parts.headers);
-        }
+    if let Some(origin) = &cors
+        && method == Method::OPTIONS
+    {
+        return cors_preflight(origin, &parts.headers);
     }
 
     let mut ctx = Ctx {
@@ -405,7 +466,9 @@ async fn route(c: &mut Ctx, path: &str) -> Response {
     }
 
     for mount in MOUNTS {
-        let Some(inner) = strip_mount(path, mount.prefix) else { continue };
+        let Some(inner) = strip_mount(path, mount.prefix) else {
+            continue;
+        };
         if mount.guard != Guard::None {
             match crate::auth::authenticate(&c.st, &c.headers).await {
                 Ok(u) => c.user = Some(u),
@@ -449,7 +512,11 @@ async fn route(c: &mut Ctx, path: &str) -> Response {
         break;
     }
 
-    if strip_mount(path, "/api").is_some() { route_unknown() } else { cannot(&c.method, path) }
+    if strip_mount(path, "/api").is_some() {
+        route_unknown()
+    } else {
+        cannot(&c.method, path)
+    }
 }
 
 async fn run(r: R, c: &Ctx) -> ApiResult {

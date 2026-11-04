@@ -45,8 +45,12 @@ impl User {
 pub fn sign_token(secret: &[u8], user_id: i32) -> String {
     let iat = Utc::now().timestamp();
     let claims = json!({ "id": user_id, "iat": iat, "exp": iat + MAX_AGE_SECS });
-    jsonwebtoken::encode(&Header::new(Algorithm::HS256), &claims, &EncodingKey::from_secret(secret))
-        .expect("HS256 signing")
+    jsonwebtoken::encode(
+        &Header::new(Algorithm::HS256),
+        &claims,
+        &EncodingKey::from_secret(secret),
+    )
+    .expect("HS256 signing")
 }
 
 /// `jwt.verify(token, secret, { algorithms: ['HS256'] })`: the payload, or
@@ -59,7 +63,9 @@ pub fn verify_token(secret: &[u8], token: &str) -> Option<serde_json::Map<String
     v.validate_aud = false;
     v.required_spec_claims.clear();
     let data = jsonwebtoken::decode::<Value>(token, &DecodingKey::from_secret(secret), &v).ok()?;
-    let Value::Object(payload) = data.claims else { return None };
+    let Value::Object(payload) = data.claims else {
+        return None;
+    };
     let now = Utc::now().timestamp() as f64;
     match payload.get("exp") {
         None => {}
@@ -87,8 +93,15 @@ pub fn set_cookie(secure: bool, token: &str) -> HeaderValue {
 
 /// Characters `encodeURIComponent` escapes.
 const COOKIE_VALUE: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-    .remove(b'-').remove(b'_').remove(b'.').remove(b'!').remove(b'~')
-    .remove(b'*').remove(b'\'').remove(b'(').remove(b')');
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'!')
+    .remove(b'~')
+    .remove(b'*')
+    .remove(b'\'')
+    .remove(b'(')
+    .remove(b')');
 
 pub fn clear_cookie() -> HeaderValue {
     HeaderValue::from_static("presencia_token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT")
@@ -116,12 +129,11 @@ pub fn read_cookie(headers: &HeaderMap) -> Option<String> {
             } else {
                 v.to_string()
             };
-            if let Some(json) = v.strip_prefix("j:") {
-                if let Ok(Value::String(s)) = serde_json::from_str::<Value>(json) {
-                    if !s.is_empty() {
-                        return Some(s);
-                    }
-                }
+            if let Some(json) = v.strip_prefix("j:")
+                && let Ok(Value::String(s)) = serde_json::from_str::<Value>(json)
+                && !s.is_empty()
+            {
+                return Some(s);
             }
             return Some(v);
         }
@@ -139,15 +151,28 @@ pub enum AuthError {
 
 /// `requireAuth`.
 pub async fn authenticate(st: &AppState, headers: &HeaderMap) -> Result<User, AuthError> {
-    let token = read_cookie(headers).filter(|t| !t.is_empty()).ok_or(AuthError::Missing)?;
-    let payload = verify_token(&st.jwt_secret(), &token).ok_or(AuthError::Invalid)?;
+    let token = read_cookie(headers)
+        .filter(|t| !t.is_empty())
+        .ok_or(AuthError::Missing)?;
+    let payload = verify_token(st.jwt_secret(), &token).ok_or(AuthError::Invalid)?;
     let id = match payload.get("id") {
         Some(Value::Number(n)) => n.as_f64().filter(|f| f.fract() == 0.0).map(|f| f as i64),
         Some(Value::String(s)) => s.trim().parse::<i64>().ok(),
         _ => None,
     };
-    let Some(id) = id.and_then(|i| i32::try_from(i).ok()) else { return Err(AuthError::Invalid) };
-    let row: Option<(i32, String, String, String, Option<i32>, bool, Option<i64>, Option<String>)> = sqlx::query_as(
+    let Some(id) = id.and_then(|i| i32::try_from(i).ok()) else {
+        return Err(AuthError::Invalid);
+    };
+    let row: Option<(
+        i32,
+        String,
+        String,
+        String,
+        Option<i32>,
+        bool,
+        Option<i64>,
+        Option<String>,
+    )> = sqlx::query_as(
         "SELECT u.id, u.full_name, u.email, u.role::text, u.company_id, u.active,
                 floor(extract(epoch FROM u.password_changed_at))::bigint,
                 c.name
@@ -166,7 +191,14 @@ pub async fn authenticate(st: &AppState, headers: &HeaderMap) -> Result<User, Au
     if !active || iat.is_some_and(|iat| iat < changed_at.unwrap_or(0) as f64) {
         return Err(AuthError::Invalid);
     }
-    Ok(User { id, full_name, email, role, company_id, company_name })
+    Ok(User {
+        id,
+        full_name,
+        email,
+        role,
+        company_id,
+        company_name,
+    })
 }
 
 pub async fn hash_password(password: String) -> Result<String, ApiError> {

@@ -18,9 +18,8 @@ pub fn field<'a>(v: &'a Value, key: &str) -> Option<&'a Value> {
 pub fn js_is_space(c: char) -> bool {
     matches!(
         c,
-        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
+        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
     )
 }
 
@@ -147,7 +146,10 @@ pub fn parse_year_month(year: Option<&Value>, month: Option<&Value>) -> Option<Y
     if !(2000.0..=2100.0).contains(&y) || !(1.0..=12.0).contains(&m) {
         return None;
     }
-    Some(YearMonth { year: y as i32, month: m as i32 })
+    Some(YearMonth {
+        year: y as i32,
+        month: m as i32,
+    })
 }
 
 pub fn month_start(ym: YearMonth) -> String {
@@ -161,10 +163,18 @@ pub fn is_date(v: Option<&Value>) -> bool {
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
         return false;
     }
-    if !b.iter().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit()) {
+    if !b
+        .iter()
+        .enumerate()
+        .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+    {
         return false;
     }
-    let (y, m, d) = (s[0..4].parse().unwrap(), s[5..7].parse().unwrap(), s[8..10].parse().unwrap());
+    let (y, m, d) = (
+        s[0..4].parse().unwrap(),
+        s[5..7].parse().unwrap(),
+        s[8..10].parse().unwrap(),
+    );
     NaiveDate::from_ymd_opt(y, m, d).is_some()
 }
 
@@ -177,7 +187,10 @@ pub fn is_email(s: &str) -> bool {
     let (Some(local), Some(domain), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
     };
-    !local.is_empty() && domain.char_indices().any(|(i, c)| c == '.' && i > 0 && i + 1 < domain.len())
+    !local.is_empty()
+        && domain
+            .char_indices()
+            .any(|(i, c)| c == '.' && i > 0 && i + 1 < domain.len())
 }
 
 pub fn is_name(v: Option<&Value>) -> bool {
@@ -226,9 +239,17 @@ mod tests {
         assert!(!is_id(Some(&json!("07"))) && !is_id(Some(&json!("2147483648"))) && !is_id(Some(&json!(true))));
         assert!(is_date(Some(&json!("2024-02-29"))) && !is_date(Some(&json!("2026-02-29"))));
         assert!(is_date(Some(&json!("0000-01-01"))));
-        assert!(is_email("a@b.c") && is_email("a.b@c.d.e") && !is_email("a@.c") && !is_email("a@b.") && !is_email("a@b@c.d"));
+        assert!(
+            is_email("a@b.c")
+                && is_email("a.b@c.d.e")
+                && !is_email("a@.c")
+                && !is_email("a@b.")
+                && !is_email("a@b@c.d")
+        );
         assert!(is_email("a@b..") && !is_email("a b@c.d"));
         assert!(!is_name(Some(&json!("  "))) && is_name(Some(&json!(" x "))));
-        assert!(password_error(Some(&json!("1234567"))).is_some() && password_error(Some(&json!("12345678"))).is_none());
+        assert!(
+            password_error(Some(&json!("1234567"))).is_some() && password_error(Some(&json!("12345678"))).is_none()
+        );
     }
 }

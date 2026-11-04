@@ -16,7 +16,9 @@ fn year_month(c: &Ctx) -> Option<YearMonth> {
 
 /// Cadre validates their own month; an admin may validate for a cadre.
 pub async fn cadre(c: &Ctx) -> ApiResult {
-    let Some(ym) = year_month(c) else { return fail(400, "year/month invalides") };
+    let Some(ym) = year_month(c) else {
+        return fail(400, "year/month invalides");
+    };
     let me = c.user();
     let requested = c.b("user_id").filter(|v| me.is_admin() && truthy(Some(v)));
     let target_id = match requested {
@@ -35,7 +37,9 @@ pub async fn cadre(c: &Ctx) -> ApiResult {
         .bind(target_id)
         .fetch_optional(&c.st.pool)
         .await?;
-    let Some((id, company_id)) = target else { return fail(404, "Utilisateur introuvable") };
+    let Some((id, company_id)) = target else {
+        return fail(404, "Utilisateur introuvable");
+    };
 
     let validated: Option<bool> = sqlx::query_scalar(
         "SELECT admin_validated FROM company_month_validations WHERE company_id = $1 AND year = $2 AND month = $3",
@@ -67,8 +71,12 @@ pub async fn cadre_reopen(c: &Ctx) -> ApiResult {
     let ym = year_month(c);
     let user = c.b("user_id").filter(|v| !v.is_null());
     let ok_id = user.is_some_and(|v| is_id_str(&js_string(Some(v))));
-    let (Some(ym), true) = (ym, ok_id) else { return fail(400, "Paramètres invalides") };
-    let IdParam::Id(user_id) = id_param(user) else { return fail(400, "Valeur invalide") };
+    let (Some(ym), true) = (ym, ok_id) else {
+        return fail(400, "Paramètres invalides");
+    };
+    let IdParam::Id(user_id) = id_param(user) else {
+        return fail(400, "Valeur invalide");
+    };
     sqlx::query(
         "INSERT INTO month_locks (user_id, year, month, cadre_validated, cadre_validated_at)
          VALUES ($1, $2, $3, false, NULL)
@@ -97,7 +105,9 @@ async fn company_validation(c: &Ctx, ym: YearMonth) -> Result<Option<(bool, Opti
 
 /// Admin: status of every cadre of a company for a month.
 pub async fn company(c: &Ctx) -> ApiResult {
-    let Some(ym) = year_month(c) else { return fail(400, "year et month requis") };
+    let Some(ym) = year_month(c) else {
+        return fail(400, "year et month requis");
+    };
     let cadres: Vec<(i32, String, String, Option<bool>, Option<DateTime<Utc>>, i64)> = sqlx::query_as(
         "SELECT u.id, u.full_name, u.email,
                 ml.cadre_validated, ml.cadre_validated_at,
@@ -137,7 +147,9 @@ pub async fn company(c: &Ctx) -> ApiResult {
 
 /// Admin: one-shot overview of every company for a month (dashboard).
 pub async fn overview(c: &Ctx) -> ApiResult {
-    let Some(ym) = year_month(c) else { return fail(400, "year et month requis") };
+    let Some(ym) = year_month(c) else {
+        return fail(400, "year et month requis");
+    };
     let rows: Vec<(i32, String, i64, i64, Option<bool>)> = sqlx::query_as(
         "SELECT c.id, c.name,
                 COUNT(u.id) FILTER (WHERE u.id IS NOT NULL) AS active_cadres,
@@ -167,12 +179,16 @@ pub async fn overview(c: &Ctx) -> ApiResult {
             json!({ "id": id, "name": name, "activeCadres": active, "validatedCadres": validated, "companyValidated": cv })
         })
         .collect();
-    ok_json(&json!({ "companies": companies, "totalActiveCadres": total, "lateCadres": late, "pendingCompanies": pending }))
+    ok_json(
+        &json!({ "companies": companies, "totalActiveCadres": total, "lateCadres": late, "pendingCompanies": pending }),
+    )
 }
 
 /// Admin validates the whole company for the month (every cadre validated first).
 pub async fn company_validate(c: &Ctx) -> ApiResult {
-    let Some(ym) = year_month(c) else { return fail(400, "year/month invalides") };
+    let Some(ym) = year_month(c) else {
+        return fail(400, "year/month invalides");
+    };
     let cadres: Vec<(i32, String, Option<bool>)> = sqlx::query_as(
         "SELECT u.id, u.full_name, ml.cadre_validated
          FROM users u
@@ -184,7 +200,11 @@ pub async fn company_validate(c: &Ctx) -> ApiResult {
     .bind(ym.month)
     .fetch_all(&c.st.pool)
     .await?;
-    let pending: Vec<&str> = cadres.iter().filter(|r| r.2 != Some(true)).map(|r| r.1.as_str()).collect();
+    let pending: Vec<&str> = cadres
+        .iter()
+        .filter(|r| r.2 != Some(true))
+        .map(|r| r.1.as_str())
+        .collect();
     if !pending.is_empty() {
         return Err(ApiError::Http(
             StatusCode::CONFLICT,
@@ -208,7 +228,9 @@ pub async fn company_validate(c: &Ctx) -> ApiResult {
 
 /// Admin reopens a company's month validation.
 pub async fn company_reopen(c: &Ctx) -> ApiResult {
-    let Some(ym) = year_month(c) else { return fail(400, "year/month invalides") };
+    let Some(ym) = year_month(c) else {
+        return fail(400, "year/month invalides");
+    };
     sqlx::query(
         "INSERT INTO company_month_validations (company_id, year, month, admin_validated, admin_validated_at, admin_validated_by)
          VALUES ($1, $2, $3, false, NULL, NULL)

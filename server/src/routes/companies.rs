@@ -66,7 +66,11 @@ pub async fn update(c: &Ctx) -> ApiResult {
 }
 
 pub async fn delete(c: &Ctx) -> ApiResult {
-    let n = sqlx::query("DELETE FROM companies WHERE id = $1").bind(c.id).execute(&c.st.pool).await?.rows_affected();
+    let n = sqlx::query("DELETE FROM companies WHERE id = $1")
+        .bind(c.id)
+        .execute(&c.st.pool)
+        .await?
+        .rows_affected();
     if n == 0 {
         return fail(404, "Société introuvable");
     }

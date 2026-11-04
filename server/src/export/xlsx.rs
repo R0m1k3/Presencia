@@ -13,7 +13,12 @@ pub fn build(data: &CompanyMonth) -> Result<Vec<u8>, XlsxError> {
     ws.set_freeze_panes(3, 1)?;
 
     let days = days_in_month(data.year, data.month) as u16;
-    let title = format!("Présences — {} — {} {}", data.company_name, MONTH_NAMES[data.month as usize - 1], data.year);
+    let title = format!(
+        "Présences — {} — {} {}",
+        data.company_name,
+        MONTH_NAMES[data.month as usize - 1],
+        data.year
+    );
     ws.merge_range(0, 0, 0, days * 2, &title, &Format::new().set_bold().set_font_size(14))?;
     ws.set_row_height(0, 22)?;
 
@@ -62,6 +67,11 @@ pub fn build(data: &CompanyMonth) -> Result<Vec<u8>, XlsxError> {
     }
 
     // Two rows below the table (ExcelJS: rowCount + 2).
-    ws.write_string_with_format(row + 1, 0, "Légende : P = Présent · NP = Non-présent · CP = Congé · RTT = RTT", &Format::new().set_italic().set_font_size(9))?;
+    ws.write_string_with_format(
+        row + 1,
+        0,
+        "Légende : P = Présent · NP = Non-présent · CP = Congé · RTT = RTT",
+        &Format::new().set_italic().set_font_size(9),
+    )?;
     wb.save_to_buffer()
 }

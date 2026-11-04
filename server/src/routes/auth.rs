@@ -12,7 +12,12 @@ use crate::{
 
 /// `req.ip`.
 fn ip(c: &Ctx) -> String {
-    let xff: Vec<&str> = c.headers.get_all("x-forwarded-for").iter().filter_map(|v| v.to_str().ok()).collect();
+    let xff: Vec<&str> = c
+        .headers
+        .get_all("x-forwarded-for")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .collect();
     let xff = (!xff.is_empty()).then(|| xff.join(", "));
     client_ip(&c.peer, xff.as_deref())
 }
@@ -41,7 +46,10 @@ pub async fn login(c: &Ctx) -> ApiResult {
     .bind(&key)
     .fetch_optional(&c.st.pool)
     .await?;
-    let hash = user.as_ref().map(|u| u.3.clone()).unwrap_or_else(|| c.st.dummy_hash.clone());
+    let hash = user
+        .as_ref()
+        .map(|u| u.3.clone())
+        .unwrap_or_else(|| c.st.dummy_hash.clone());
     let ok = verify_password(password.to_string(), hash).await;
     let Some((id, full_name, email, _, role, active, company_id, company_name)) = user.filter(|u| ok && u.5) else {
         c.st.limiter.lock().unwrap().record_failure(&ip, &key, Instant::now());
@@ -53,7 +61,10 @@ pub async fn login(c: &Ctx) -> ApiResult {
         "companyId": company_id, "companyName": company_name,
     });
     let _ = active;
-    Ok(with_cookie(ok_json(&body)?, set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), id))))
+    Ok(with_cookie(
+        ok_json(&body)?,
+        set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), id)),
+    ))
 }
 
 pub async fn logout(_: &Ctx) -> ApiResult {
@@ -61,8 +72,11 @@ pub async fn logout(_: &Ctx) -> ApiResult {
 }
 
 /// GET /me needs a session; the auth mount has no router-level guard.
+#[allow(clippy::result_large_err)]
 async fn session(c: &Ctx) -> Result<crate::auth::User, axum::response::Response> {
-    crate::auth::authenticate(&c.st, &c.headers).await.map_err(super::auth_error)
+    crate::auth::authenticate(&c.st, &c.headers)
+        .await
+        .map_err(super::auth_error)
 }
 
 pub async fn me(c: &Ctx) -> ApiResult {
@@ -88,7 +102,9 @@ pub async fn password(c: &Ctx) -> ApiResult {
         .bind(user.id)
         .fetch_optional(&c.st.pool)
         .await?;
-    let Some(hash) = hash else { return fail(401, "Session invalide ou expirée") };
+    let Some(hash) = hash else {
+        return fail(401, "Session invalide ou expirée");
+    };
     if !verify_password(current.to_string(), hash).await {
         return fail(400, "Mot de passe actuel incorrect");
     }
@@ -99,5 +115,8 @@ pub async fn password(c: &Ctx) -> ApiResult {
         .execute(&c.st.pool)
         .await?;
     // Other sessions are now invalid; keep this one alive with a fresh token.
-    Ok(with_cookie(ok_json(&json!({ "ok": true }))?, set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), user.id))))
+    Ok(with_cookie(
+        ok_json(&json!({ "ok": true }))?,
+        set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), user.id)),
+    ))
 }

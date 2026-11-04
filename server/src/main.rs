@@ -19,7 +19,11 @@ fn healthcheck(port: u16) -> ExitCode {
         s.read_exact(&mut head)?;
         Ok(head.starts_with(b"HTTP/1.1 200"))
     };
-    if check().unwrap_or(false) { ExitCode::SUCCESS } else { ExitCode::FAILURE }
+    if check().unwrap_or(false) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 async fn shutdown() {
@@ -48,8 +52,12 @@ async fn main() -> ExitCode {
     let port = cfg.port;
     let state = AppState::new(pool, cfg, secret);
 
-    // Dual stack, like Node's default listener.
+    // Dual stack, like Node's default listener; IPv4 only when IPv6 is unavailable.
     let listener = match tokio::net::TcpListener::bind(SocketAddr::from(([0u16; 8], port))).await {
+        Ok(l) => Ok(l),
+        Err(_) => tokio::net::TcpListener::bind(SocketAddr::from(([0u8; 4], port))).await,
+    };
+    let listener = match listener {
         Ok(l) => l,
         Err(e) => {
             eprintln!("Échec du démarrage : {e}");

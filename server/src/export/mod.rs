@@ -17,7 +17,9 @@ pub struct Cadre {
 
 impl Cadre {
     pub fn status(&self, date: &str, period: &str) -> Option<&str> {
-        self.entries.get(&(date.to_string(), period.to_string())).map(String::as_str)
+        self.entries
+            .get(&(date.to_string(), period.to_string()))
+            .map(String::as_str)
     }
 }
 
@@ -59,13 +61,24 @@ pub async fn load(pool: &PgPool, company_id: i32, year: i32, month: i32) -> Resu
     .bind(format!("{year}-{month:02}-01"))
     .fetch_all(pool)
     .await?;
-    let mut cadres: Vec<Cadre> =
-        rows.into_iter().map(|(id, full_name)| Cadre { id, full_name, entries: HashMap::new() }).collect();
+    let mut cadres: Vec<Cadre> = rows
+        .into_iter()
+        .map(|(id, full_name)| Cadre {
+            id,
+            full_name,
+            entries: HashMap::new(),
+        })
+        .collect();
     for (user_id, date, period, status) in entries {
         // A cadre (re)activated between the two queries is simply left out.
         if let Some(c) = cadres.iter_mut().find(|c| c.id == user_id) {
             c.entries.insert((date, period), status);
         }
     }
-    Ok(Some(CompanyMonth { company_name, year, month, cadres }))
+    Ok(Some(CompanyMonth {
+        company_name,
+        year,
+        month,
+        cadres,
+    }))
 }

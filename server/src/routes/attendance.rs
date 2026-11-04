@@ -21,7 +21,10 @@ pub struct Target {
 async fn resolve_target(c: &Ctx, requested: Option<&Value>) -> Result<Target, ApiError> {
     let me = c.user();
     if matches!(requested, None | Some(Value::Null)) || requested == Some(&Value::String(String::new())) {
-        return Ok(Target { id: me.id, company_id: me.company_id });
+        return Ok(Target {
+            id: me.id,
+            company_id: me.company_id,
+        });
     }
     if !me.is_admin() {
         return fail(403, "Accès refusé");
@@ -29,7 +32,9 @@ async fn resolve_target(c: &Ctx, requested: Option<&Value>) -> Result<Target, Ap
     if !is_id_str(&js_string(requested)) {
         return fail(400, "Utilisateur invalide");
     }
-    let IdParam::Id(id) = id_param(requested) else { return fail(400, "Valeur invalide") };
+    let IdParam::Id(id) = id_param(requested) else {
+        return fail(400, "Valeur invalide");
+    };
     let row: Option<(i32, Option<i32>)> = sqlx::query_as("SELECT id, company_id FROM users WHERE id = $1")
         .bind(id)
         .fetch_optional(&c.st.pool)
@@ -48,7 +53,9 @@ struct MonthState {
 }
 
 fn truthy_field(v: &Option<Value>, key: &str) -> bool {
-    v.as_ref().and_then(|v| field(v, key)).is_some_and(|f| f == &Value::Bool(true))
+    v.as_ref()
+        .and_then(|v| field(v, key))
+        .is_some_and(|f| f == &Value::Bool(true))
 }
 
 /// `x || null` on a row_to_json field.
@@ -91,13 +98,19 @@ async fn ensure_writable(c: &Ctx, t: Target, ym: YearMonth) -> Result<(), ApiErr
         return fail(423, "Ce mois a été validé par l’administrateur et est verrouillé");
     }
     if !c.user().is_admin() && st.cadre_validated {
-        return fail(423, "Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.");
+        return fail(
+            423,
+            "Vous avez déjà validé ce mois. Contactez un administrateur pour le modifier.",
+        );
     }
     Ok(())
 }
 
 fn ym_of(date: &str) -> YearMonth {
-    YearMonth { year: date[0..4].parse().unwrap(), month: date[5..7].parse().unwrap() }
+    YearMonth {
+        year: date[0..4].parse().unwrap(),
+        month: date[5..7].parse().unwrap(),
+    }
 }
 
 fn one_of(v: Option<&Value>, set: &[&str]) -> bool {
@@ -109,7 +122,9 @@ fn str_of(v: Option<&Value>) -> String {
 }
 
 pub async fn get(c: &Ctx) -> ApiResult {
-    let Some(ym) = parse_year_month(c.q("year"), c.q("month")) else { return fail(400, "year et month requis") };
+    let Some(ym) = parse_year_month(c.q("year"), c.q("month")) else {
+        return fail(400, "year et month requis");
+    };
     let t = resolve_target(c, c.q("user_id")).await?;
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT entry_date::text, period::text, status::text
@@ -124,8 +139,15 @@ pub async fn get(c: &Ctx) -> ApiResult {
     .fetch_all(&c.st.pool)
     .await?;
     let st = month_state(c, t, ym).await?;
-    let editable = if c.user().is_admin() { !st.company_validated } else { !st.cadre_validated && !st.company_validated };
-    let entries: Vec<Value> = rows.into_iter().map(|(d, p, s)| json!({ "date": d, "period": p, "status": s })).collect();
+    let editable = if c.user().is_admin() {
+        !st.company_validated
+    } else {
+        !st.cadre_validated && !st.company_validated
+    };
+    let entries: Vec<Value> = rows
+        .into_iter()
+        .map(|(d, p, s)| json!({ "date": d, "period": p, "status": s }))
+        .collect();
     ok_json(&json!({
         "userId": t.id,
         "entries": entries,
@@ -203,7 +225,9 @@ pub async fn history(c: &Ctx) -> ApiResult {
 
 /// Clear every entry of a month (« Tout effacer »).
 pub async fn delete_month(c: &Ctx) -> ApiResult {
-    let Some(ym) = parse_year_month(c.b("year"), c.b("month")) else { return fail(400, "Paramètres invalides") };
+    let Some(ym) = parse_year_month(c.b("year"), c.b("month")) else {
+        return fail(400, "Paramètres invalides");
+    };
     let t = resolve_target(c, c.b("user_id")).await?;
     ensure_writable(c, t, ym).await?;
     sqlx::query(
@@ -283,11 +307,13 @@ pub async fn delete(c: &Ctx) -> ApiResult {
     let t = resolve_target(c, c.b("user_id")).await?;
     let date = str_of(date);
     ensure_writable(c, t, ym_of(&date)).await?;
-    sqlx::query("DELETE FROM attendance_entries WHERE user_id = $1 AND entry_date = $2::date AND period = $3::half_day_period")
-        .bind(t.id)
-        .bind(date)
-        .bind(str_of(period))
-        .execute(&c.st.pool)
-        .await?;
+    sqlx::query(
+        "DELETE FROM attendance_entries WHERE user_id = $1 AND entry_date = $2::date AND period = $3::half_day_period",
+    )
+    .bind(t.id)
+    .bind(date)
+    .bind(str_of(period))
+    .execute(&c.st.pool)
+    .await?;
     ok_json(&json!({ "ok": true }))
 }

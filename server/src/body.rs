@@ -28,21 +28,32 @@ pub async fn read_json(headers: &HeaderMap, body: Body) -> Result<Value, ApiErro
         return Ok(empty);
     };
     let mut params = ct.split(';');
-    if !params.next().unwrap_or("").trim().eq_ignore_ascii_case("application/json") {
+    if !params
+        .next()
+        .unwrap_or("")
+        .trim()
+        .eq_ignore_ascii_case("application/json")
+    {
         return Ok(empty);
     }
     for p in params {
-        if let Some((k, v)) = p.split_once('=') {
-            if k.trim().eq_ignore_ascii_case("charset") {
-                let cs = v.trim().trim_matches('"').to_ascii_lowercase();
-                if !cs.starts_with("utf-") {
-                    // body-parser answers 415, which the Express error handler turns into a 500.
-                    return Err(ApiError::Internal(format!("unsupported charset \"{}\"", cs.to_uppercase())));
-                }
+        if let Some((k, v)) = p.split_once('=')
+            && k.trim().eq_ignore_ascii_case("charset")
+        {
+            let cs = v.trim().trim_matches('"').to_ascii_lowercase();
+            if !cs.starts_with("utf-") {
+                // body-parser answers 415, which the Express error handler turns into a 500.
+                return Err(ApiError::Internal(format!(
+                    "unsupported charset \"{}\"",
+                    cs.to_uppercase()
+                )));
             }
         }
     }
-    if length.and_then(|l| l.trim().parse::<u64>().ok()).is_some_and(|l| l > LIMIT as u64) {
+    if length
+        .and_then(|l| l.trim().parse::<u64>().ok())
+        .is_some_and(|l| l > LIMIT as u64)
+    {
         return Err(too_large());
     }
     let bytes = axum::body::to_bytes(body, LIMIT).await.map_err(|_| too_large())?;

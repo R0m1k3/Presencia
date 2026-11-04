@@ -71,9 +71,14 @@ pub async fn recreate_db(cfg: &Config) {
         "postgres://{}:{}@{}:{}/postgres",
         cfg.pg_user, cfg.pg_password, cfg.pg_host, cfg.pg_port
     );
-    let mut c = PgConnection::connect(&url).await.expect("test cluster reachable (PGPORT=55432)");
+    let mut c = PgConnection::connect(&url)
+        .await
+        .expect("test cluster reachable (PGPORT=55432)");
     let db = &cfg.pg_database;
-    for q in [format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)"), format!("CREATE DATABASE {db}")] {
+    for q in [
+        format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)"),
+        format!("CREATE DATABASE {db}"),
+    ] {
         sqlx::raw_sql(&q).execute(&mut c).await.unwrap();
     }
 }
@@ -88,7 +93,11 @@ pub async fn setup_with(name: &str, tweak: impl FnOnce(&mut Config)) -> T {
     recreate_db(&cfg).await;
     let pool = presencia::db::pool(&cfg);
     let secret = presencia::bootstrap::bootstrap(&pool, &cfg).await.expect("bootstrap");
-    T { st: AppState::new(pool.clone(), cfg, secret), pool, peer: "127.0.0.1:50000".parse().unwrap() }
+    T {
+        st: AppState::new(pool.clone(), cfg, secret),
+        pool,
+        peer: "127.0.0.1:50000".parse().unwrap(),
+    }
 }
 
 impl T {
@@ -114,7 +123,9 @@ impl T {
         let req = match body {
             Some(v) => {
                 let s = v.to_string();
-                b.header("content-type", "application/json").header("content-length", s.len()).body(Body::from(s))
+                b.header("content-type", "application/json")
+                    .header("content-length", s.len())
+                    .body(Body::from(s))
             }
             None => b.body(Body::empty()),
         };
@@ -122,7 +133,14 @@ impl T {
     }
 
     pub async fn login(&self, email: &str, password: &str) -> String {
-        let r = self.call("POST", "/api/auth/login", Some(json!({ "email": email, "password": password })), None).await;
+        let r = self
+            .call(
+                "POST",
+                "/api/auth/login",
+                Some(json!({ "email": email, "password": password })),
+                None,
+            )
+            .await;
         assert_eq!(r.status, 200, "login {email}: {}", String::from_utf8_lossy(&r.bytes));
         r.cookie().unwrap()
     }
@@ -133,7 +151,9 @@ impl T {
 
     /// Company and cadre created through the API; returns (company id, cadre id, cadre cookie).
     pub async fn company_with_cadre(&self, admin: &str, company: &str, email: &str) -> (i64, i64, String) {
-        let c = self.call("POST", "/api/companies", Some(json!({ "name": company })), Some(admin)).await;
+        let c = self
+            .call("POST", "/api/companies", Some(json!({ "name": company })), Some(admin))
+            .await;
         assert_eq!(c.status, 201, "{:?}", c.json());
         let cid = c.json()["id"].as_i64().unwrap();
         let u = self

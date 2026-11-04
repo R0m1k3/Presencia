@@ -33,7 +33,11 @@ impl ApiError {
 
     /// Route-specific translation of a SQLSTATE, the rest left as is.
     pub fn on_pg(self, code: &str, status: u16, msg: &str) -> Self {
-        if self.pg_code().as_deref() == Some(code) { ApiError::new(status, msg) } else { self }
+        if self.pg_code().as_deref() == Some(code) {
+            ApiError::new(status, msg)
+        } else {
+            self
+        }
     }
 }
 
@@ -69,15 +73,20 @@ impl IntoResponse for ApiError {
 
 fn internal(msg: &str) -> Response {
     eprintln!("{msg}");
-    json_response(StatusCode::INTERNAL_SERVER_ERROR, &json!({ "error": "Erreur interne du serveur" }))
+    json_response(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        &json!({ "error": "Erreur interne du serveur" }),
+    )
 }
 
 /// `res.status(s).json(body)`.
 pub fn json_response<T: Serialize + ?Sized>(status: StatusCode, body: &T) -> Response {
     let bytes = serde_json::to_vec(body).expect("serializable body");
     let mut res = (status, bytes).into_response();
-    res.headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json; charset=utf-8"));
+    res.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json; charset=utf-8"),
+    );
     res
 }
 

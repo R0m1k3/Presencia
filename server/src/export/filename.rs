@@ -7,7 +7,12 @@ use unicode_normalization::UnicodeNormalization;
 use crate::validate::js_is_space;
 
 /// What `encodeURIComponent` escapes, plus `'()*`.
-const RFC5987: &AsciiSet = &NON_ALPHANUMERIC.remove(b'-').remove(b'_').remove(b'.').remove(b'!').remove(b'~');
+const RFC5987: &AsciiSet = &NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'_')
+    .remove(b'.')
+    .remove(b'!')
+    .remove(b'~');
 
 pub fn attachment(company: &str, year: i32, month: i32, ext: &str) -> String {
     let raw = format!("presences_{company}_{year}-{month:02}.{ext}");
@@ -31,7 +36,10 @@ pub fn attachment(company: &str, year: i32, month: i32, ext: &str) -> String {
         .map(|c| if matches!(c, '"' | '\\' | '/' | ';') { '_' } else { c })
         .collect();
     let utf8 = base.replace(['\\', '/'], "_");
-    format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{}", utf8_percent_encode(&utf8, RFC5987))
+    format!(
+        "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
+        utf8_percent_encode(&utf8, RFC5987)
+    )
 }
 
 #[cfg(test)]

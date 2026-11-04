@@ -27,7 +27,10 @@ pub struct Limiter {
 }
 
 fn keys(ip: &str, email: &str) -> [(String, u32); 2] {
-    [(format!("a:{ip}:{email}"), MAX_PER_ACCOUNT), (format!("i:{ip}"), MAX_PER_IP)]
+    [
+        (format!("a:{ip}:{email}"), MAX_PER_ACCOUNT),
+        (format!("i:{ip}"), MAX_PER_IP),
+    ]
 }
 
 impl Limiter {
@@ -43,10 +46,10 @@ impl Limiter {
     pub fn locked_for(&mut self, ip: &str, email: &str, now: Instant) -> Duration {
         let mut wait = Duration::ZERO;
         for (key, max) in keys(ip, email) {
-            if let Some(f) = self.live(&key, now) {
-                if f.count >= max {
-                    wait = wait.max(f.since + WINDOW - now);
-                }
+            if let Some(f) = self.live(&key, now)
+                && f.count >= max
+            {
+                wait = wait.max(f.since + WINDOW - now);
             }
         }
         wait
@@ -63,7 +66,14 @@ impl Limiter {
             }
             self.seq += 1;
             self.order.push_back((key.clone(), self.seq));
-            self.map.insert(key, Failures { count: 1, since: now, seq: self.seq });
+            self.map.insert(
+                key,
+                Failures {
+                    count: 1,
+                    since: now,
+                    seq: self.seq,
+                },
+            );
         }
         // Drop queue entries whose key is gone or was re-inserted later.
         if self.order.len() > 2 * MAX_KEYS {

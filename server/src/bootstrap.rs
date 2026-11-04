@@ -37,11 +37,10 @@ async fn wait_for_db(pool: &PgPool, retries: u32, delay: Duration) -> Result<(),
 }
 
 async fn run_migrations(pool: &PgPool) -> Result<(), BoxError> {
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'companies')",
-    )
-    .fetch_one(pool)
-    .await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'companies')")
+            .fetch_one(pool)
+            .await?;
     if exists {
         println!("Schéma déjà initialisé.");
     } else {
@@ -67,7 +66,11 @@ async fn jwt_secret(pool: &PgPool, cfg: &Config) -> Result<String, BoxError> {
         .bind(random_b64(48))
         .execute(pool)
         .await?;
-    Ok(sqlx::query_scalar("SELECT value FROM app_settings WHERE key = 'jwt_secret'").fetch_one(pool).await?)
+    Ok(
+        sqlx::query_scalar("SELECT value FROM app_settings WHERE key = 'jwt_secret'")
+            .fetch_one(pool)
+            .await?,
+    )
 }
 
 /// ADMIN_EMAIL / ADMIN_PASSWORD only matter on the very first start. Without
@@ -87,7 +90,9 @@ async fn seed_admin(pool: &PgPool, cfg: &Config) -> Result<(), BoxError> {
     }
     let generated = cfg.admin_password.is_none();
     let password = cfg.admin_password.clone().unwrap_or_else(|| random_b64(18));
-    let hash = crate::auth::hash_password(password.clone()).await.map_err(|e| format!("{e:?}"))?;
+    let hash = crate::auth::hash_password(password.clone())
+        .await
+        .map_err(|e| format!("{e:?}"))?;
     sqlx::query(
         "INSERT INTO users (full_name, email, password_hash, role, company_id, active)
          VALUES ($1, $2, $3, 'admin', NULL, true)",

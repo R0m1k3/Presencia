@@ -2,8 +2,18 @@ pub const STATUSES: [&str; 4] = ["present", "absent", "conge", "rtt"];
 pub const PERIODS: [&str; 2] = ["AM", "PM"];
 
 pub const MONTH_NAMES: [&str; 12] = [
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
+    "Janvier",
+    "Février",
+    "Mars",
+    "Avril",
+    "Mai",
+    "Juin",
+    "Juillet",
+    "Août",
+    "Septembre",
+    "Octobre",
+    "Novembre",
+    "Décembre",
 ];
 
 pub fn label(status: &str) -> &'static str {
