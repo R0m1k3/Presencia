@@ -112,7 +112,10 @@ impl T {
             b = b.header("cookie", c);
         }
         let req = match body {
-            Some(v) => b.header("content-type", "application/json").body(Body::from(v.to_string())),
+            Some(v) => {
+                let s = v.to_string();
+                b.header("content-type", "application/json").header("content-length", s.len()).body(Body::from(s))
+            }
             None => b.body(Body::empty()),
         };
         self.send(req.unwrap()).await

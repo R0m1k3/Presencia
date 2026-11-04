@@ -242,7 +242,7 @@ fn matches<'a>(segs: &[Seg], path: &[&'a str]) -> Option<Option<&'a str>> {
     Some(param)
 }
 
-fn auth_error(e: AuthError) -> Response {
+pub(crate) fn auth_error(e: AuthError) -> Response {
     match e {
         AuthError::Missing => ApiError::new(401, "Non authentifié").into_response(),
         AuthError::Invalid => {
