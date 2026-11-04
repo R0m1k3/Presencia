@@ -27,12 +27,13 @@ docker compose pull    # image de l'API publiée sur ghcr.io
 docker compose up -d --build
 ```
 
-Mise à jour : `docker compose pull && docker compose up -d`. L'image
+Mise à jour : `git pull && docker compose pull && docker compose up -d --build`
+(`--build` ne concerne que le frontend ; l'API n'est jamais compilée sur le serveur). L'image
 `ghcr.io/r0m1k3/presencia-backend` est publiée à chaque push sur `main`, avec
 les étiquettes `latest` et `sha-<7 caractères>` ; `PRESENCIA_TAG` dans `.env`
 permet d'en fixer une (retour arrière). Le paquet GHCR doit être public, sinon
 faites d'abord `docker login ghcr.io`. Pour compiler l'image sur place :
-`docker compose build presencia-backend`.
+`docker build -t ghcr.io/r0m1k3/presencia-backend:latest server`.
 
 Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 

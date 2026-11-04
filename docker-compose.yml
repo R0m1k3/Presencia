@@ -22,11 +22,10 @@ services:
       retries: 10
 
   presencia-backend:
-    # Image built and published by GitHub Actions (.github/workflows/backend.yml).
-    # Update: docker compose pull && docker compose up -d. To build locally
-    # instead: docker compose up -d --build.
+    # Image built and published by GitHub Actions (.github/workflows/backend.yml),
+    # pulled rather than compiled here. To build it on this host instead:
+    # docker build -t ghcr.io/r0m1k3/presencia-backend:latest server
     image: ghcr.io/r0m1k3/presencia-backend:${PRESENCIA_TAG:-latest}
-    build: ./server
     restart: unless-stopped
     depends_on:
       presencia-db:
