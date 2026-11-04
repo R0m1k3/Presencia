@@ -15,7 +15,7 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 - **Export** PDF et Excel par société et par mois (détail par cadre, jour et demi-journée).
 - **Interface mobile** : sous 900 px, le calendrier devient une liste verticale, la navigation passe en barre basse et les cibles tactiles font 44 px.
 - **Aucune dépendance externe au chargement** : la police (Inter) et les icônes (Phosphor) sont servies par l'application elle-même — aucune requête vers un CDN ou vers Google Fonts.
-- **Docker** : Postgres + API Node/Express + frontend Nginx, sur des ports non standards.
+- **Docker** : Postgres + API Rust (axum) + frontend Nginx, sur des ports non standards. L'image de l'API est construite par GitHub Actions et publiée sur GHCR.
 
 ## Démarrage
 
@@ -23,8 +23,16 @@ Les secrets (mot de passe base de données, identifiants admin…) ne sont pas d
 
 ```bash
 cp .env.example .env   # puis renseignez au minimum POSTGRES_PASSWORD
+docker compose pull    # image de l'API publiée sur ghcr.io
 docker compose up -d --build
 ```
+
+Mise à jour : `docker compose pull && docker compose up -d`. L'image
+`ghcr.io/r0m1k3/presencia-backend` est publiée à chaque push sur `main`, avec
+les étiquettes `latest` et `sha-<7 caractères>` ; `PRESENCIA_TAG` dans `.env`
+permet d'en fixer une (retour arrière). Le paquet GHCR doit être public, sinon
+faites d'abord `docker login ghcr.io`. Pour compiler l'image sur place :
+`docker compose build presencia-backend`.
 
 Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
@@ -93,7 +101,11 @@ Réseaux : seuls l'API et le frontend rejoignent le réseau partagé `nginx_defa
 ## Architecture technique
 
 ```
-backend/    API Node.js / Express, PostgreSQL (pg), auth par cookie JWT httpOnly
+server/     API Rust (axum, sqlx), PostgreSQL, auth par cookie JWT httpOnly
+  src/routes/   une route par fichier, routage reproduisant celui d'Express
+  src/export/   Excel (rust_xlsxwriter) et PDF (Helvetica, sans dépendance)
+  migrations/   schéma, appliqué au démarrage
+  tests/        tests d'intégration (une base PostgreSQL jetable par fichier)
 frontend/   Page HTML unique (vanilla JS), servie par Nginx qui proxifie /api vers le backend
   public/css/styles.css     tokens et composants du design system (Nocturne)
   public/css/presencia.css  couche applicative du design (calendrier, navigation, statuts)
@@ -125,10 +137,20 @@ Règles de verrouillage :
 
 ## Développement local (sans Docker)
 
+Prérequis : Rust stable (`rustup`) et un PostgreSQL 16 local.
+
 ```bash
-cd backend && npm install
-# variables d'env : voir backend/.env.example (pointer PGHOST vers un Postgres local)
-npm start
+cd server
+export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=presencia PGPASSWORD=presencia PGDATABASE=presencia
+export COOKIE_SECURE=false ADMIN_PASSWORD=un-mot-de-passe
+cargo run --release
+```
+
+Tests : ils créent et suppriment leurs propres bases (`presencia_t_*`) avec un
+rôle qui a le droit `CREATEDB`, lu dans les mêmes variables `PG*` :
+
+```bash
+cargo test -- --test-threads=1
 ```
 
 Le frontend est un simple dossier de fichiers statiques (`frontend/public`) ; en développement, servez-le avec n'importe quel serveur statique qui proxifie `/api` vers `http://localhost:4790` (voir `frontend/nginx.conf` pour la configuration de référence).

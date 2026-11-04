@@ -1,0 +1,98 @@
+name: Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: presencia
+          POSTGRES_PASSWORD: presencia
+          POSTGRES_DB: presencia
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U presencia"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: presencia
+      PGPASSWORD: presencia
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      # Each test file recreates its own database: run them one at a time.
+      - run: cargo test --locked -- --test-threads=1
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          load: true
+          tags: presencia-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (container + database, /api/health)
+        run: |
+          docker network create smoke
+          docker run -d --name db --network smoke -e POSTGRES_USER=presencia \
+            -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=presencia postgres:16-alpine
+          docker run -d --name api --network smoke -p 4790:4790 -e PGHOST=db \
+            -e PGPASSWORD=smoke -e ADMIN_PASSWORD=smoke-password presencia-backend:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4790/api/health && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:4790/api/health
+          docker exec api /app/presencia healthcheck
+          docker logs api
+      - name: Tags
+        if: github.ref == 'refs/heads/main'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/r0m1k3/presencia-backend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+      - uses: docker/login-action@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish
+        if: github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
