@@ -1,0 +1,33 @@
+[package]
+name = "presencia"
+version = "2.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "chrono", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bcrypt = "0.17"
+jsonwebtoken = "9"
+rust_xlsxwriter = "0.102"
+printpdf = "0.7"
+rand = "0.9"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+percent-encoding = "2"
+unicode-normalization = "0.1"
+ttf-parser = "0.25"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
+lopdf = "0.34"
+
+[profile.release]
+lto = "thin"
+strip = true
