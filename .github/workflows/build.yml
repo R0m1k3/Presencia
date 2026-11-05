@@ -9,8 +9,9 @@ on:
 permissions:
   contents: read
 
-# A newer push on the same branch cancels the run in progress (never on main,
-# so that every merge publishes its image).
+# A newer push on a branch cancels its run in progress. On main runs are not
+# cancelled but queued; GitHub keeps one queued run, so two quick merges may
+# publish only the latest sha- tag (latest is always right).
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -83,8 +84,10 @@ jobs:
           # The real UI, not build.rs's placeholder, with its headers.
           curl -fsS -D headers.txt http://127.0.0.1:8080/ -o index.html
           grep -qi '^content-security-policy:' headers.txt
+          grep -qi '^content-type: text/html; charset=utf-8' headers.txt
           if grep -qi 'interface non construite' index.html; then exit 1; fi
-          curl -fsS -o /dev/null http://127.0.0.1:8080/js/app.js
+          test "$(curl -fsS -o /dev/null -w '%{content_type}' http://127.0.0.1:8080/js/app.js)" \
+            = 'text/javascript; charset=utf-8'
       - name: Container logs
         if: always()
         run: docker logs api || true

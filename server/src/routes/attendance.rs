@@ -303,7 +303,9 @@ pub async fn bulk(c: &Ctx) -> ApiResult {
 }
 
 /// `DELETE /api/attendance/bulk` (no Node counterpart: added with the new
-/// UI, to clear or undo a selection in one statement).
+/// UI, to clear or undo a selection in one statement). `count` is the number
+/// of half-days actually deleted (PUT /bulk counts the distinct half-days
+/// sent).
 pub async fn bulk_delete(c: &Ctx) -> ApiResult {
     let (entries, t) = bulk_entries(c, false).await?;
     let (dates, periods): (Vec<String>, Vec<String>) = entries

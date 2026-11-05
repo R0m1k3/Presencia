@@ -19,7 +19,7 @@ struct Dist;
 
 /// Served at `/` when the UI was not built (debug builds only).
 const PLACEHOLDER: &str = "<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><title>Presencia</title>\
-                           <p>Interface non construite : lancez <code>npm run build</code> dans web/.</p></html>\n";
+                           <p>Interface non construite : web/dist/index.html manque (voir le README).</p></html>\n";
 
 /// Vite names its build files after their content, so they never change.
 fn cache_control(path: &str) -> &'static str {

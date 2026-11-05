@@ -210,9 +210,19 @@ async fn planning_and_locks() {
     let mut other = one.clone();
     other["user_id"] = json!(uid);
     let r = t
-        .call("DELETE", "/api/attendance/bulk", Some(other), Some(&cadre))
+        .call("DELETE", "/api/attendance/bulk", Some(other.clone()), Some(&cadre))
         .await;
     assert_eq!((r.status.as_u16(), r.error().as_str()), (403, "Accès refusé"));
+    // An admin clears a cadre's half-day.
+    put(
+        cadre.clone(),
+        json!({ "date": "2026-03-06", "period": "AM", "status": "rtt" }),
+    )
+    .await;
+    let r = t
+        .call("DELETE", "/api/attendance/bulk", Some(other), Some(&admin))
+        .await;
+    assert_eq!(r.json(), json!({ "ok": true, "count": 1 }));
     for bad in [
         json!({ "entries": [] }),
         json!({ "entries": [{ "date": "2026-03-06" }] }),

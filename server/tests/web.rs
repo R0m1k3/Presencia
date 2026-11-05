@@ -1,5 +1,5 @@
-//! The embedded UI: in debug builds rust-embed reads ../web/dist from disk,
-//! which build.rs fills with a placeholder index.html when the UI is not built.
+//! The embedded UI: in debug builds rust-embed reads ../web/dist from disk
+//! (absent in CI: web.rs then serves its placeholder at /).
 
 mod common;
 

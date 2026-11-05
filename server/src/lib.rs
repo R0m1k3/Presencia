@@ -115,26 +115,25 @@ async fn handle(State(st): State<AppState>, ConnectInfo(peer): ConnectInfo<Socke
     res
 }
 
-/// The policy nginx used to send (`frontend/security-headers.conf`).
+/// The policy the old nginx frontend sent (its security-headers.conf).
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
                    img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; \
                    base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 /// The router, in its own task so that a panic becomes a 500 instead of a
-/// dropped connection; like a Node handler, it finishes even if the client
-/// leaves.
+/// dropped connection. Like a Node handler, it finishes even if the client
+/// leaves, but never runs longer than REQUEST_TIMEOUT.
 async fn api(st: AppState, peer: SocketAddr, req: Request) -> Response {
-    let task = tokio::spawn(async move { routes::dispatch(&st, peer, req).await });
-    let abort = task.abort_handle();
-    match tokio::time::timeout(REQUEST_TIMEOUT, task).await {
+    let task =
+        tokio::spawn(async move { tokio::time::timeout(REQUEST_TIMEOUT, routes::dispatch(&st, peer, req)).await });
+    match task.await {
         Ok(Ok(res)) => res,
-        Ok(Err(e)) => error::ApiError::Internal(format!("panic: {e}")).into_response(),
-        Err(_) => {
-            abort.abort();
+        Ok(Err(_elapsed)) => {
             let mut res = StatusCode::REQUEST_TIMEOUT.into_response();
             res.headers_mut()
                 .insert(header::CONNECTION, HeaderValue::from_static("close"));
             res
         }
+        Err(e) => error::ApiError::Internal(format!("panic: {e}")).into_response(),
     }
 }

@@ -64,6 +64,7 @@ async fn limiter_uses_client_ip() {
     assert_eq!(fail_login(&t, "172.18.0.3:1", Some("198.51.100.7")).await, 429);
     // Same proxy, other client: allowed.
     assert_eq!(fail_login(&t, "172.18.0.3:1", Some("198.51.100.8")).await, 401);
-    // A direct client cannot borrow the blocked address through the header.
-    assert_eq!(fail_login(&t, "198.51.100.9:1", Some("198.51.100.8")).await, 401);
+    // A direct client claiming the blocked address is not blocked: its
+    // header is ignored.
+    assert_eq!(fail_login(&t, "198.51.100.9:1", Some("198.51.100.7")).await, 401);
 }

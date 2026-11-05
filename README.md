@@ -40,42 +40,26 @@ avant le premier `up` : `docker network create nginx_default` s'il n'y en a pas.
 
 ### Reverse proxy de l'hôte
 
-Il vise `presencia-frontend:80` sur le réseau `nginx_default`. Il doit
-**remplacer** l'en-tête `X-Forwarded-For` par l'adresse du client, sinon un
-client peut choisir l'adresse que voit le limiteur de connexions et le
-contourner :
+Il vise `presencia-frontend:80` sur le réseau `nginx_default` et doit
+transmettre l'adresse du client dans `X-Forwarded-For`, en **ajoutant** ou en
+remplaçant : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
+(ou `$remote_addr`). C'est le réglage par défaut de Nginx Proxy Manager : rien
+à changer. L'application lit cet en-tête de droite à gauche et retient la
+première adresse publique, celle que le proxy a ajoutée ; un client d'Internet
+ne peut donc pas choisir l'adresse que voit le limiteur de connexions. Seul un
+client qui arrive au proxy avec une adresse privée (réseau local, VPN) le peut.
 
-```nginx
-proxy_set_header X-Forwarded-For $remote_addr;
-```
-
-Avec Nginx Proxy Manager, l'en-tête par défaut ajoute au lieu de remplacer :
-dans l'onglet « Advanced » de l'hôte, redéfinissez tout le bloc `location /`
-(sans `include conf.d/include/proxy.conf`, qui remettrait l'ancien en-tête) :
-
-```nginx
-location / {
-  proxy_set_header Host $host;
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $remote_addr;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  proxy_set_header X-Forwarded-Scheme $scheme;
-  proxy_http_version 1.1;
-  proxy_pass $forward_scheme://$server:$port$request_uri;
-}
-```
-
-Contrôle : `docker exec <conteneur-npm> grep -rn X-Forwarded-For /data/nginx/proxy_host/`
-ne doit montrer, pour cet hôte, que la ligne `$remote_addr`.
-
-Ce bloc remplace celui que NPM génère, avec ce qu'il contient : si l'hôte
-utilise une liste d'accès (« Access List ») ou HSTS, ils ne s'appliquent plus.
-Ajoutez alors leurs directives dans le bloc (par exemple
-`add_header Strict-Transport-Security "max-age=63072000" always;`), et
-vérifiez-les dans le fichier généré.
+Si Cloudflare (proxy activé) est devant, l'adresse ajoutée est celle de
+Cloudflare : tous les clients partagent alors le compteur par adresse du
+limiteur. Il faut dans ce cas faire lire au proxy l'en-tête `CF-Connecting-IP`.
 
 ### Passage à un seul conteneur (depuis l'API Rust + Nginx), et retour arrière
 
+0. Avant : la CI de `main` est verte (l'image `ghcr.io/r0m1k3/presencia` est
+   publiée), le paquet GHCR `presencia` est rendu public (il est privé à sa
+   première publication), et `PRESENCIA_TAG` est retiré de `.env` ou vaut
+   `latest` (un `sha-` de l'ancienne image `presencia-backend` n'existe pas
+   pour la nouvelle). Contrôle : `docker pull ghcr.io/r0m1k3/presencia:latest`.
 1. Sauvegarde : `docker compose exec presencia-db pg_dump -U presencia presencia > presencia-AAAAMMJJ.sql`.
 2. `git pull && docker compose pull && docker compose up -d --remove-orphans`
    (`--remove-orphans` supprime l'ancien conteneur `presencia-backend`).
@@ -84,7 +68,9 @@ vérifiez-les dans le fichier généré.
 
 Retour à l'API Rust + Nginx : `git checkout 7e7180d`, retirez `PRESENCIA_TAG`
 de `.env` (ou donnez-lui un `sha-` de l'image `presencia-backend`), puis
-`docker compose pull && docker compose up -d --build --remove-orphans`.
+`docker compose pull && docker compose up -d --build --remove-orphans`. Si le
+proxy de l'hôte répond 502, redémarrez-le. Pour revenir ensuite à la version
+courante : `git checkout main`.
 
 ### Passage de l'API Node à l'API Rust, et retour arrière
 
@@ -220,10 +206,11 @@ Règles de verrouillage :
 Prérequis : Rust stable (`rustup`) et un PostgreSQL 16 local.
 
 ```bash
+rm -rf web/dist && mkdir -p web && cp -r frontend/public web/dist   # l'interface (voir plus bas)
 cd server
 export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=presencia PGPASSWORD=presencia PGDATABASE=presencia
 export COOKIE_SECURE=false ADMIN_PASSWORD=un-mot-de-passe
-cargo run --release
+cargo run --release   # interface et API sur le port 4790
 ```
 
 Tests : ils créent et suppriment leurs propres bases (`presencia_t_*`) avec un
@@ -236,10 +223,7 @@ cargo test -- --test-threads=1
 L'interface est embarquée depuis `web/dist` (non versionné). En attendant la
 nouvelle interface, c'est une copie de `frontend/public` :
 
-```bash
-rm -rf web/dist && mkdir -p web && cp -r frontend/public web/dist
-cd server && cargo run --release   # interface et API sur le même port
-```
+Une compilation release refuse de se faire sans `web/dist/index.html`.
 
 En debug, les fichiers sont relus sur le disque à chaque requête : une page
 modifiée dans `web/dist` s'affiche sans recompiler. Sans `web/dist`, une page
