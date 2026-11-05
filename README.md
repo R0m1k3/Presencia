@@ -40,7 +40,8 @@ avant le premier `up` : `docker network create nginx_default` s'il n'y en a pas.
 
 ### Reverse proxy de l'hôte
 
-Il vise `presencia-frontend:80` sur le réseau `nginx_default` et doit
+Il vise `presencia-frontend:80` (ou le nom du conteneur,
+`presencia-presencia-frontend-1:80`) sur le réseau `nginx_default` et doit
 transmettre l'adresse du client dans `X-Forwarded-For`, en **ajoutant** ou en
 remplaçant : `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`
 (ou `$remote_addr`). C'est le réglage par défaut de Nginx Proxy Manager : rien
@@ -93,11 +94,12 @@ Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
 | Service   | Port hôte | Accessible depuis        |
 |-----------|-----------|--------------------------|
-| Application (interface + API) | 8781 | le réseau |
+| Application (interface + API) | 8781 | la machine hôte seulement |
 | Postgres  | 6543      | la machine hôte seulement |
 
-Postgres n'est publié que sur `127.0.0.1`, pour l'administration locale
-(psql, sauvegardes).
+Les deux ne sont publiés que sur `127.0.0.1` : le proxy passe par le réseau
+Docker, le port 8781 ne sert qu'aux contrôles depuis l'hôte (`curl`) et
+Postgres à l'administration locale (psql, sauvegardes).
 
 **`JWT_SECRET`** : laissez-le vide pour que l'API génère un secret aléatoire,
 conservé en base (les sessions survivent aux redémarrages). Si vous le

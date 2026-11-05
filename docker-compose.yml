@@ -51,7 +51,8 @@ services:
       timeout: 5s
       retries: 5
     ports:
-      - "8781:80"
+      # Host only: the reverse proxy reaches the container over nginx_default.
+      - "127.0.0.1:8781:80"
     networks:
       - presencia_private
       - nginx
