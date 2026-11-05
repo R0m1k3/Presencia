@@ -35,6 +35,29 @@ permet d'en fixer une (retour arrière). Le paquet GHCR doit être public, sinon
 faites d'abord `docker login ghcr.io`. Pour compiler l'image sur place :
 `docker build -t ghcr.io/r0m1k3/presencia-backend:latest server`.
 
+Le réseau Docker `nginx_default` (celui du reverse proxy de l'hôte) doit exister
+avant le premier `up` : `docker network create nginx_default` s'il n'y en a pas.
+
+### Passage de l'API Node à l'API Rust, et retour arrière
+
+L'API Rust reprend la base existante telle quelle (même schéma, mêmes hachages
+bcrypt, mêmes cookies de session) : aucune migration de données.
+
+1. Sauvegarde : `docker compose exec presencia-db pg_dump -U presencia presencia > presencia.sql`.
+2. Si les anciens mots de passe (Postgres, admin) ou le `JWT_SECRET` ont figuré
+   dans l'historique public du dépôt, changez-les : `POSTGRES_PASSWORD` et
+   `JWT_SECRET` dans `.env` (puis `ALTER USER presencia PASSWORD '…'` dans la
+   base ; un nouveau `JWT_SECRET` déconnecte tout le monde). Le mot de passe
+   admin se change dans l'interface (« Mon mot de passe ») : `ADMIN_PASSWORD`
+   n'est lu que tant qu'aucun admin n'existe.
+3. `git pull && docker compose pull && docker compose up -d --build`.
+   L'image n'est publiée qu'après la fusion dans `main` (étiquettes `latest`
+   et `sha-…`) ; pour essayer avant, compilez-la sur place (commande ci-dessus).
+   Elle est construite pour linux/amd64 uniquement.
+
+Retour à l'ancienne API Node : `git checkout f760cf6 && docker compose up -d --build`
+(elle se compile sur place et relit la même base).
+
 Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
 | Service   | Port hôte | Accessible depuis        |
@@ -54,7 +77,7 @@ d'exemple ou trop courte est ignorée.
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (e-mail par défaut `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-backend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (sans `ADMIN_EMAIL` : `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-backend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
 
 Si vous changez les identifiants admin dans `.env` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
@@ -115,6 +138,17 @@ frontend/   Page HTML unique (vanilla JS), servie par Nginx qui proxifie /api ve
   public/css/phosphor.css   sous-ensemble des 18 icônes utilisées, servi localement
 docker-compose.yml
 ```
+
+L'API Rust remplace une API Node/Express (commit `f760cf6`) sans changer le
+frontend : elle reproduit exactement ses réponses (codes, messages, ordre des
+clés JSON, routage insensible à la casse, contrôles de session avant le 404).
+`tools/parity/` rejoue 156 requêtes sur les deux versions et compare les
+réponses. Les imitations d'Express qui ne servent qu'à cette parité pourront
+disparaître avec le nouveau frontend.
+
+`migrations/` n'est pas un migrateur : les deux fichiers sont inclus dans le
+binaire et appliqués au démarrage (`001` sur une base vide, `002` toujours,
+idempotent). Un nouveau fichier doit être ajouté dans `src/bootstrap.rs`.
 
 `styles.css` et `presencia.css` proviennent du projet Claude Design et sont à
 remplacer tels quels lors d'une nouvelle exportation du design ; les

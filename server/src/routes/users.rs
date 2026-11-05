@@ -9,6 +9,9 @@ use crate::{
     validate::{is_email, is_id, is_name, js_id, js_trim, password_error, truthy},
 };
 
+/// Enums are read as `::text` and bound as `$n::text::user_role`: the values
+/// stay the plain strings of the API, and an unknown role is rejected by
+/// PostgreSQL (22P02 → 400) exactly as under Node.
 type UserRow = (i32, String, String, String, Option<i32>, bool, DateTime<Utc>);
 const RETURNING: &str = "RETURNING id, full_name, email, role::text, company_id, active, created_at";
 

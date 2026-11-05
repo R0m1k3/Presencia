@@ -36,6 +36,8 @@ async fn wait_for_db(pool: &PgPool, retries: u32, delay: Duration) -> Result<(),
     Err(format!("Impossible de se connecter à la base de données : {reason}").into())
 }
 
+/// Not a migrator: 001 builds an empty database, 002 is idempotent and runs
+/// at every start. A new file has to be added here by hand.
 async fn run_migrations(pool: &PgPool) -> Result<(), BoxError> {
     let exists: bool =
         sqlx::query_scalar("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'companies')")

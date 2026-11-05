@@ -1277,6 +1277,8 @@ dependencies = [
  "chrono",
  "hashlink",
  "http-body-util",
+ "hyper",
+ "hyper-util",
  "jsonwebtoken",
  "lopdf",
  "percent-encoding",

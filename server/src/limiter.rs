@@ -2,7 +2,10 @@
 //! per (IP, email), guessing one account's password; per IP, all emails
 //! together, trying a few passwords on many accounts.
 
-use std::time::{Duration, Instant};
+use std::{
+    hash::{BuildHasher, RandomState},
+    time::{Duration, Instant},
+};
 
 use hashlink::LinkedHashMap;
 
@@ -17,23 +20,41 @@ struct Failures {
     since: Instant,
 }
 
+/// A counter key: its kind and a keyed hash of the IP (and email), so that
+/// an entry costs the same whatever the length of the email sent (up to the
+/// body limit). The random hash key makes collisions impossible to aim at.
+type Key = (Kind, u64);
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Kind {
+    Account,
+    Ip,
+}
+
 /// Keys in insertion order, like the JS `Map` of the Node version: the first
 /// key is the oldest window, evicted when the map is full.
 #[derive(Default)]
 pub struct Limiter {
-    map: LinkedHashMap<String, Failures>,
+    map: LinkedHashMap<Key, Failures>,
+    hasher: RandomState,
 }
 
-fn keys(ip: &str, email: &str) -> [(String, u32); 2] {
-    [
-        (format!("a:{ip}:{email}"), MAX_PER_ACCOUNT),
-        (format!("i:{ip}"), MAX_PER_IP),
-    ]
+impl Limiter {
+    fn account_key(&self, ip: &str, email: &str) -> Key {
+        (Kind::Account, self.hasher.hash_one((ip, email)))
+    }
+
+    fn keys(&self, ip: &str, email: &str) -> [(Key, u32); 2] {
+        [
+            (self.account_key(ip, email), MAX_PER_ACCOUNT),
+            ((Kind::Ip, self.hasher.hash_one(ip)), MAX_PER_IP),
+        ]
+    }
 }
 
 impl Limiter {
     /// The live entry for `key`; an expired one is removed.
-    fn live(&mut self, key: &str, now: Instant) -> Option<&mut Failures> {
+    fn live(&mut self, key: &Key, now: Instant) -> Option<&mut Failures> {
         if self.map.get(key).is_some_and(|f| f.since + WINDOW <= now) {
             self.map.remove(key);
         }
@@ -43,7 +64,7 @@ impl Limiter {
     /// Time until a new attempt is allowed, zero if allowed now.
     pub fn locked_for(&mut self, ip: &str, email: &str, now: Instant) -> Duration {
         let mut wait = Duration::ZERO;
-        for (key, max) in keys(ip, email) {
+        for (key, max) in self.keys(ip, email) {
             if let Some(f) = self.live(&key, now)
                 && f.count >= max
             {
@@ -54,7 +75,7 @@ impl Limiter {
     }
 
     pub fn record_failure(&mut self, ip: &str, email: &str, now: Instant) {
-        for (key, _) in keys(ip, email) {
+        for (key, _) in self.keys(ip, email) {
             if let Some(f) = self.live(&key, now) {
                 f.count += 1;
                 continue;
@@ -68,7 +89,8 @@ impl Limiter {
 
     /// After a successful login only the account counter is cleared.
     pub fn clear_account(&mut self, ip: &str, email: &str) {
-        self.map.remove(&format!("a:{ip}:{email}"));
+        let key = self.account_key(ip, email);
+        self.map.remove(&key);
     }
 
     pub fn len(&self) -> usize {

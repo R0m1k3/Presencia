@@ -30,7 +30,7 @@ pub async fn login(c: &Ctx) -> ApiResult {
     };
     let key = js_trim(email).to_lowercase();
     let ip = ip(c);
-    let wait = c.st.limiter.lock().unwrap().locked_for(&ip, &key, Instant::now());
+    let wait = c.st.limiter().locked_for(&ip, &key, Instant::now());
     if !wait.is_zero() {
         let minutes = wait.as_millis().div_ceil(60_000);
         return fail(429, format!("Trop de tentatives. Réessayez dans {minutes} min."));
@@ -51,16 +51,15 @@ pub async fn login(c: &Ctx) -> ApiResult {
         .map(|u| u.3.clone())
         .unwrap_or_else(|| c.st.dummy_hash.clone());
     let ok = verify_password(password.to_string(), hash).await;
-    let Some((id, full_name, email, _, role, active, company_id, company_name)) = user.filter(|u| ok && u.5) else {
-        c.st.limiter.lock().unwrap().record_failure(&ip, &key, Instant::now());
+    let Some((id, full_name, email, _, role, _, company_id, company_name)) = user.filter(|u| ok && u.5) else {
+        c.st.limiter().record_failure(&ip, &key, Instant::now());
         return fail(401, "Identifiants incorrects");
     };
-    c.st.limiter.lock().unwrap().clear_account(&ip, &key);
+    c.st.limiter().clear_account(&ip, &key);
     let body = json!({
         "id": id, "fullName": full_name, "email": email, "role": role,
         "companyId": company_id, "companyName": company_name,
     });
-    let _ = active;
     Ok(with_cookie(
         ok_json(&body)?,
         set_cookie(c.st.cfg.cookie_secure, &sign_token(c.st.jwt_secret(), id)),

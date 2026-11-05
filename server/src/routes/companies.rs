@@ -22,6 +22,8 @@ fn name(c: &Ctx) -> Result<String, ApiError> {
 }
 
 pub async fn list(c: &Ctx) -> ApiResult {
+    // `::text`: node-postgres returns a bigint COUNT as a string, and the
+    // front expects `"active_cadre_count": "2"`.
     let rows: Vec<(i32, String, DateTime<Utc>, String)> = sqlx::query_as(
         "SELECT c.id, c.name, c.created_at,
                 (COUNT(u.id) FILTER (WHERE u.role = 'cadre' AND u.active))::text AS active_cadre_count

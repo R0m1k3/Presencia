@@ -127,7 +127,7 @@ pub async fn get(c: &Ctx) -> ApiResult {
          WHERE user_id = $1
            AND entry_date >= $2::date
            AND entry_date < ($2::date + INTERVAL '1 month')
-         ORDER BY entry_date, period",
+         ORDER BY attendance_entries.entry_date, attendance_entries.period",
     )
     .bind(t.id)
     .bind(month_start(ym))

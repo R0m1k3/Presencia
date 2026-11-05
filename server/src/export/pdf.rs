@@ -304,7 +304,9 @@ pub fn build(data: &CompanyMonth) -> Vec<u8> {
             let am = cadre.status(&date, "AM");
             let pm = cadre.status(&date, "PM");
             for st in [am, pm].into_iter().flatten() {
-                counts[crate::status::STATUSES.iter().position(|s| *s == st).unwrap()] += 1;
+                if let Some(i) = crate::status::STATUSES.iter().position(|s| *s == st) {
+                    counts[i] += 1;
+                }
             }
             if y > 760.0 {
                 doc.add_page();

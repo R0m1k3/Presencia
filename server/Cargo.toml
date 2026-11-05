@@ -9,6 +9,7 @@ axum = { version = "0.8", default-features = false, features = ["http1", "tokio"
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "chrono", "json"] }
 serde = { version = "1", features = ["derive"] }
+# Keys in insertion order: the front and the parity tool expect Node's order.
 serde_json = { version = "1", features = ["preserve_order"] }
 bcrypt = "0.17"
 jsonwebtoken = "9"
@@ -20,9 +21,12 @@ percent-encoding = "2"
 unicode-normalization = "0.1"
 hashlink = "0.10"
 http-body-util = "0.1"
+# Own accept loop (main.rs): axum::serve cannot set a header read timeout.
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-graceful", "http1"] }
+tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
-tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.37"

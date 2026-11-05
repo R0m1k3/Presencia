@@ -17,13 +17,18 @@ pub mod routes;
 pub mod status;
 pub mod validate;
 
-use std::{net::SocketAddr, ops::Deref, sync::Arc};
+use std::{
+    net::SocketAddr,
+    ops::Deref,
+    sync::{Arc, Mutex, MutexGuard, PoisonError},
+    time::Duration,
+};
 
 use axum::{
     Router,
     extract::{ConnectInfo, Request, State},
-    http::{HeaderValue, header},
-    response::Response,
+    http::{HeaderName, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
 };
 use sqlx::PgPool;
 
@@ -31,7 +36,7 @@ pub struct Inner {
     pub pool: PgPool,
     pub cfg: config::Config,
     pub jwt_secret: Vec<u8>,
-    pub limiter: std::sync::Mutex<limiter::Limiter>,
+    pub limiter: Mutex<limiter::Limiter>,
     /// Compared against when the email is unknown, so that a wrong email and
     /// a wrong password take the same time.
     pub dummy_hash: String,
@@ -54,13 +59,19 @@ impl AppState {
             pool,
             cfg,
             jwt_secret: jwt_secret.into_bytes(),
-            limiter: std::sync::Mutex::new(limiter::Limiter::default()),
+            limiter: Mutex::new(limiter::Limiter::default()),
             dummy_hash,
         }))
     }
 
     pub fn jwt_secret(&self) -> &[u8] {
         &self.0.jwt_secret
+    }
+
+    /// The limiter stays usable even if a panic happened while it was held
+    /// (its state is a plain map, never left half-updated).
+    pub fn limiter(&self) -> MutexGuard<'_, limiter::Limiter> {
+        self.0.limiter.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
@@ -71,13 +82,35 @@ pub fn app(state: AppState) -> Router {
     Router::new().fallback(handle).with_state(state)
 }
 
+/// Node's `server.requestTimeout`: the whole request, body included.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
+
 async fn handle(State(st): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, req: Request) -> Response {
-    let mut res = routes::dispatch(&st, peer, req).await;
+    // Its own task, so that a panic becomes a 500 instead of a dropped
+    // connection; like a Node handler, it finishes even if the client leaves.
+    let task = tokio::spawn(async move { routes::dispatch(&st, peer, req).await });
+    let abort = task.abort_handle();
+    let mut res = match tokio::time::timeout(REQUEST_TIMEOUT, task).await {
+        Ok(Ok(res)) => res,
+        Ok(Err(e)) => error::ApiError::Internal(format!("panic: {e}")).into_response(),
+        Err(_) => {
+            abort.abort();
+            let mut res = StatusCode::REQUEST_TIMEOUT.into_response();
+            res.headers_mut()
+                .insert(header::CONNECTION, HeaderValue::from_static("close"));
+            res
+        }
+    };
     // The API is also reachable on its own port, without the nginx headers.
     let h = res.headers_mut();
-    h.insert("x-content-type-options", HeaderValue::from_static("nosniff"));
-    h.insert("x-frame-options", HeaderValue::from_static("DENY"));
-    h.insert("referrer-policy", HeaderValue::from_static("same-origin"));
-    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    // Defaults only: a handler that sets one of these keeps its own value.
+    for (name, value) in [
+        (HeaderName::from_static("x-content-type-options"), "nosniff"),
+        (HeaderName::from_static("x-frame-options"), "DENY"),
+        (HeaderName::from_static("referrer-policy"), "same-origin"),
+        (header::CACHE_CONTROL, "no-store"),
+    ] {
+        h.entry(name).or_insert(HeaderValue::from_static(value));
+    }
     res
 }

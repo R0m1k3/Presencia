@@ -8,7 +8,12 @@ on:
 
 permissions:
   contents: read
-  packages: write
+
+# A newer push on the same branch cancels the run in progress (never on main,
+# so that every merge publishes its image).
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   test:
@@ -48,6 +53,9 @@ jobs:
   image:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -72,7 +80,9 @@ jobs:
           done
           curl -fsS http://127.0.0.1:4790/api/health
           docker exec api /app/presencia healthcheck
-          docker logs api
+      - name: Container logs
+        if: always()
+        run: docker logs api || true
       - name: Tags
         if: github.ref == 'refs/heads/main'
         id: meta
