@@ -4,6 +4,9 @@
 .github
 **/node_modules
 web/dist
+web/tests
+web/test-results
+web/playwright-report
 server/target
 tools
 *.md

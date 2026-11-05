@@ -7,14 +7,14 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 - **Connexion uniquement** : aucune inscription publique. Tous les comptes (admin et cadres) sont créés par un administrateur.
 - **Multi-sociétés** : chaque cadre est rattaché à une société. L'administrateur voit toutes les sociétés et tous les plannings ; un cadre ne voit que le sien.
 - **Tableau de bord** adapté au rôle : compteurs du mois et raccourcis « à faire maintenant » (sociétés prêtes à valider, cadres en retard, saisie à compléter).
-- **Planning mensuel** : clic sur une demi-journée (matin/après-midi) pour choisir Présent, Non-présent, Congé ou RTT. Trois affichages au choix (grille, compact, liste), **saisie rapide au pinceau** (on active un statut puis on peint les cases), **raccourcis clavier** dans le sélecteur (1–4 pour les statuts, ⌫ pour effacer, ↵ pour appliquer à la journée entière), et deux actions groupées : « Remplir les jours ouvrés » et « Tout effacer ».
+- **Planning mensuel** : clic sur une demi-journée (matin/après-midi) pour choisir Présent, Non-présent, Congé ou RTT. Deux affichages (grille, liste), **pinceau** (on choisit un statut puis chaque clic l'applique), **sélection par glisser** sur plusieurs jours, **raccourcis clavier** (flèches pour se déplacer, 1–4 pour les statuts, ⌫ pour effacer, ↵ dans le sélecteur pour la journée entière), deux actions groupées (« Remplir les jours ouvrés », « Tout effacer ») et **annulation** de la dernière action (bouton du message ou Ctrl+Z).
 - **Validation de fin de mois en deux temps** :
   1. Chaque cadre **valide son propre mois** (verrouille ses saisies).
   2. Une fois **tous les cadres d'une société** validés, l'administrateur **valide la société** pour ce mois (verrouillage complet). L'administrateur peut réouvrir un mois cadre ou une société en cas de correction nécessaire.
 - **Historique** : chaque cadre retrouve ses mois précédents avec les totaux par statut.
 - **Export** PDF et Excel par société et par mois (détail par cadre, jour et demi-journée).
 - **Interface mobile** : sous 900 px, le calendrier devient une liste verticale, la navigation passe en barre basse et les cibles tactiles font 44 px.
-- **Aucune dépendance externe au chargement** : la police (Inter) et les icônes (Phosphor) sont servies par l'application elle-même — aucune requête vers un CDN ou vers Google Fonts.
+- **Aucune dépendance externe au chargement** : la police (Inter) et les icônes (Lucide, intégrées au code) sont servies par l'application elle-même — aucune requête vers un CDN ou vers Google Fonts.
 - **Docker** : Postgres + une application Rust (axum) qui sert l'API et l'interface, sur des ports non standards. L'image est construite par GitHub Actions et publiée sur GHCR.
 
 ## Démarrage
@@ -73,6 +73,22 @@ de `.env` (ou donnez-lui un `sha-` de l'image `presencia-backend`), puis
 proxy de l'hôte répond 502, redémarrez-le. Pour revenir ensuite à la version
 courante : `git checkout main`.
 
+### Nouvelle interface (Svelte), et retour à l'ancienne
+
+La topologie ne change pas : seule l'image `presencia` change.
+
+1. Avant la mise à jour, notez l'étiquette de l'image en cours :
+   `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(docker compose ps -q presencia-frontend)`
+   donne son commit ; l'étiquette correspondante est `sha-` suivi des 7
+   premiers caractères (visible aussi dans les paquets GHCR du dépôt).
+2. `git pull && docker compose pull && docker compose up -d`.
+
+Retour à l'ancienne interface : mettez `PRESENCIA_TAG=sha-<étiquette notée>`
+dans `.env`, puis `docker compose pull && docker compose up -d`. Pas besoin de
+`git checkout` : le `docker-compose.yml` est le même. La base n'est pas
+touchée par la nouvelle interface. Pour revenir ensuite à la version courante,
+retirez `PRESENCIA_TAG` de `.env` et relancez les deux mêmes commandes.
+
 ### Passage de l'API Node à l'API Rust, et retour arrière
 
 L'API Rust reprend la base existante telle quelle (même schéma, mêmes hachages
@@ -108,7 +124,7 @@ d'exemple ou trop courte est ignorée.
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (sans `ADMIN_EMAIL` : `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-frontend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (sans `ADMIN_EMAIL` : `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-frontend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou « Compte » dans la barre basse sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
 
 Si vous changez les identifiants admin dans `.env` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
@@ -124,9 +140,10 @@ Si vous changez les identifiants admin dans `.env` *après* un premier démarrag
 ### En tant que cadre
 
 - Renseigner sa présence par demi-journée sur le mois en cours (ou les mois précédents/suivants). Le plus rapide : cliquer **« Remplir les jours ouvrés »** puis ne corriger que les exceptions (congés, RTT, absences).
-- Pour saisir plusieurs cases d'affilée, activer un statut dans **Saisie rapide** : chaque clic applique directement ce statut, sans passer par le sélecteur.
+- Pour saisir plusieurs cases d'affilée, choisir un statut dans le **Pinceau** : chaque clic l'applique directement, sans passer par le sélecteur. On peut aussi glisser sur plusieurs jours puis choisir le statut dans la barre qui apparaît.
+- La dernière action s'annule avec le bouton « Annuler » du message, ou Ctrl+Z.
 - Dans le sélecteur d'une demi-journée : touches **1** à **4** pour les statuts, **⌫** pour effacer, **↵** pour appliquer à la journée entière.
-- En fin de mois, cliquer sur **« Valider mon mois »** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
+- En fin de mois, cliquer sur **« Valider le mois »** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
 - **Historique** : retrouver les mois précédents et leurs totaux, et les rouvrir en lecture.
 
 ## Sécurité
@@ -158,37 +175,32 @@ Réseaux : seule l'application rejoint le réseau partagé `nginx_default` ; Pos
 ```
 server/     Rust (axum, sqlx) : l'API et l'interface, PostgreSQL, auth par cookie JWT httpOnly
   src/routes/   une route par fichier, routage reproduisant celui d'Express
-  src/web.rs    interface embarquée (web/dist, copié de frontend/public), en-têtes de cache
+  src/web.rs    interface embarquée (web/dist), en-têtes de cache
   build.rs      refuse une compilation release sans interface
   src/export/   Excel (rust_xlsxwriter) et PDF (Helvetica, sans dépendance)
   migrations/   schéma, appliqué au démarrage
   tests/        tests d'intégration (une base PostgreSQL jetable par fichier)
-frontend/   Page HTML unique (vanilla JS), embarquée dans le binaire
-  public/css/styles.css     tokens et composants du design system (Nocturne)
-  public/css/presencia.css  couche applicative du design (calendrier, navigation, statuts)
-  public/css/app.css        glue : mises en page que la maquette exprimait en styles inline
-  public/css/inter.css      police Inter, servie localement
-  public/css/phosphor.css   sous-ensemble des 18 icônes utilisées, servi localement
+web/        Interface Svelte 5 (TypeScript, Vite), construite dans web/dist
+  src/app.css           tokens (encre sur blanc, quatre couleurs de statut) et composants
+  src/lib/logic/        logique pure testée (dates, sélection, annulation, verrou, totaux)
+  src/lib/              appels à l'API, file d'écriture, session, routeur par hash
+  src/components/       calendrier, barre de navigation, dialogues, messages
+  src/routes/           un écran par fichier
+  tests/unit/           tests node --test de src/lib/logic
+  tests/e2e/            parcours Playwright (1440 px et 390 px, axe, aucune requête externe)
+  public/fonts/         police Inter, servie localement
 Dockerfile, docker-compose.yml
 ```
 
-L'API Rust remplace une API Node/Express (commit `f760cf6`) sans changer le
-frontend : elle reproduit exactement ses réponses (codes, messages, ordre des
+L'API Rust a remplacé une API Node/Express (commit `f760cf6`) sans changer
+l'ancien frontend : elle reproduit exactement ses réponses (codes, messages, ordre des
 clés JSON, routage insensible à la casse, contrôles de session avant le 404).
 `tools/parity/` rejoue 156 requêtes sur les deux versions et compare les
-réponses. Les imitations d'Express qui ne servent qu'à cette parité pourront
-disparaître avec le nouveau frontend.
+réponses.
 
 `migrations/` n'est pas un migrateur : les deux fichiers sont inclus dans le
 binaire et appliqués au démarrage (`001` sur une base vide, `002` toujours,
 idempotent). Un nouveau fichier doit être ajouté dans `src/bootstrap.rs`.
-
-`styles.css` et `presencia.css` proviennent du projet Claude Design et sont à
-remplacer tels quels lors d'une nouvelle exportation du design ; les
-adaptations propres à l'application vivent dans `app.css` pour que cette
-réimportation reste triviale. Seule modification apportée à `styles.css` :
-l'`@import` vers Google Fonts a été retiré au profit de `inter.css` servi
-localement.
 
 ### Modèle de données (PostgreSQL)
 
@@ -205,10 +217,10 @@ Règles de verrouillage :
 
 ## Développement local (sans Docker)
 
-Prérequis : Rust stable (`rustup`) et un PostgreSQL 16 local.
+Prérequis : Rust stable (`rustup`), Node 22 et un PostgreSQL 16 local.
 
 ```bash
-rm -rf web/dist && mkdir -p web && cp -r frontend/public web/dist   # l'interface (voir plus bas)
+(cd web && npm ci && npm run build)   # l'interface, dans web/dist
 cd server
 export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=presencia PGPASSWORD=presencia PGDATABASE=presencia
 export COOKIE_SECURE=false ADMIN_PASSWORD=un-mot-de-passe
@@ -222,8 +234,20 @@ rôle qui a le droit `CREATEDB`, lu dans les mêmes variables `PG*` :
 cargo test -- --test-threads=1
 ```
 
-L'interface est embarquée depuis `web/dist` (non versionné). En attendant la
-nouvelle interface, c'est une copie de `frontend/public` :
+L'interface est embarquée depuis `web/dist` (non versionné). Pour travailler
+dessus, laisser tourner l'API puis lancer Vite, qui recharge à chaque
+modification et relaie `/api` vers le port 4790 :
+
+```bash
+cd web
+npm run dev            # http://localhost:5173
+npm run check          # svelte-check, sans aucun avertissement
+npm run test:unit      # logique pure
+BASE_URL=http://127.0.0.1:4790 ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run test:e2e
+```
+
+Les tests Playwright créent leurs propres sociétés et cadres sur l'instance
+visée : à lancer sur une base de développement, jamais en production.
 
 Une compilation release refuse de se faire sans `web/dist/index.html`.
 
