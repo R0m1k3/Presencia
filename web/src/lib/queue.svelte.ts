@@ -5,14 +5,11 @@ import { WriteQueueCore } from './logic/queue.ts';
 
 export type { QueueOwner } from './logic/queue.ts';
 
-class Pending {
-  n = $state(0);
-}
-const pending = new Pending();
+let pending = $state(0);
 
-export const writes = new WriteQueueCore((n) => (pending.n = n));
-export const pendingWrites = () => pending.n;
+export const writes = new WriteQueueCore((n) => (pending = n));
+export const pendingWrites = () => pending;
 
 addEventListener('beforeunload', (e) => {
-  if (pending.n > 0) e.preventDefault();
+  if (pending > 0) e.preventDefault();
 });

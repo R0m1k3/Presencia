@@ -74,7 +74,7 @@
     <div class="panel empty" role="alert"><p>{err}</p><button class="btn" type="button" onclick={() => load(company)}>Réessayer</button></div>
   {:else if cadres}
     {#if partial}
-      <p class="partial" role="status">Les chiffres de certaines sociétés n’ont pas pu être chargés : leurs cadres affichent « — ». <button class="btn small" type="button" onclick={() => load(company)}>Réessayer</button></p>
+      <p class="partial" role="status">Les chiffres de certaines sociétés n’ont pas pu être chargés : leurs cadres affichent « — » <button class="btn small" type="button" onclick={() => load(company)}>Réessayer</button></p>
     {/if}
     <div class="panel">
       {#if shown.length === 0}
@@ -91,8 +91,10 @@
                 <td><span class="cell-main">{u.full_name}</span><br /><span class="cell-sub">{u.email}</span></td>
                 <td data-label="Société">{u.company_name ?? '—'}</td>
                 <td class="fill">
-                  {#if m}
-                    <StackBar filled={m.filled} {total} />
+                  {#if u.company_id === null}
+                    <span class="cell-sub">Sans société</span>
+                  {:else if m}
+                    <StackBar filled={m.filled} {total} label="{filledText(m.filled, total)} demi-journées renseignées" />
                     <span class="cell-sub">{filledText(m.filled, total)}</span>
                   {:else}
                     <span class="cell-sub">—</span>
@@ -100,7 +102,7 @@
                 </td>
                 <td>
                   <span class="tag" class:off={!u.active} class:done={u.active && m?.cadreValidated}>
-                    {!u.active ? 'Inactif' : !m ? '—' : m.cadreValidated ? 'Validé' : 'En saisie'}
+                    {!u.active ? 'Inactif' : u.company_id === null ? '—' : !m ? '—' : m.cadreValidated ? 'Validé' : 'En saisie'}
                   </span>
                 </td>
                 <td class="actions"><a class="btn small" href="#/plannings/{u.id}/{ymKey(ym)}">Ouvrir</a></td>

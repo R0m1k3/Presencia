@@ -67,8 +67,11 @@
     sessionStorage.setItem('presencia.view', v);
   }
 
+  /** No write while a validation or reopening is being sent: it would get a 423. */
+  const frozen = $derived(locked || busy);
+
   function apply(keys: HalfKey[], status: Status | null) {
-    if (locked || keys.length === 0) return;
+    if (frozen || keys.length === 0) return;
     store.commit(new Map(keys.map((k) => [k, status])) as Change);
   }
 
@@ -79,6 +82,7 @@
   }
 
   async function clearAll() {
+    if (frozen) return;
     const n = store.map.size;
     if (n === 0) return ok('Rien à effacer ce mois-ci');
     const yes = await confirm(
@@ -87,7 +91,7 @@
       'Tout effacer',
       true,
     );
-    if (yes) store.clearMonth();
+    if (yes && !frozen) store.clearMonth();
   }
 
   async function validate() {
@@ -108,8 +112,9 @@
     } catch (e) {
       error(message(e));
     } finally {
+      // The grid stays frozen until the new lock state is on screen.
+      await store.load();
       busy = false;
-      void store.load();
     }
   }
 
@@ -126,8 +131,9 @@
     } catch (e) {
       error(message(e));
     } finally {
+      // The grid stays frozen until the new lock state is on screen.
+      await store.load();
       busy = false;
-      void store.load();
     }
   }
 
@@ -140,12 +146,12 @@
     if (t.closest('input, textarea, select, dialog')) return;
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
       e.preventDefault();
-      store.undo();
+      if (!frozen) store.undo();
       return;
     }
     // Brush shortcuts when the focus is not on a half-day (there, the keys
     // write directly).
-    if (t.closest('[data-k], .menu') || e.ctrlKey || e.metaKey || e.altKey || locked || busy) return;
+    if (t.closest('[data-k], .menu') || e.ctrlKey || e.metaKey || e.altKey || frozen) return;
     const n = '1234'.indexOf(e.key);
     if (n >= 0) toggleBrush(STATUSES[n]);
     else if (e.key === '0') toggleBrush('erase');
@@ -168,7 +174,7 @@
     </div>
     {#if lock}
       <div class="actions desktop">
-        {#if !locked}
+        {#if !frozen}
           <button class="btn ghost" type="button" onclick={clearAll}><X />Tout effacer</button>
           <button class="btn" type="button" onclick={fill}><ListChecks />Remplir les jours ouvrés</button>
         {/if}
@@ -208,7 +214,7 @@
 
     {#if !locked || lock.canValidate || lock.canReopen}
       <div class="actions mobile">
-        {#if !locked}
+        {#if !frozen}
           <button class="icon-btn" type="button" onclick={clearAll} aria-label="Tout effacer" title="Tout effacer"><X /></button>
           <button class="btn" type="button" onclick={fill}><ListChecks />Jours ouvrés</button>
         {/if}
@@ -222,7 +228,7 @@
     {/if}
 
     <div class="tools">
-      {#if !locked && !busy}
+      {#if !frozen}
         <div class="brush" role="group" aria-label="Pinceau">
           <span class="brush-label"><Brush />Pinceau</span>
           {#each STATUSES as s, i (s)}
@@ -242,7 +248,7 @@
           <button type="button" class="chip" aria-pressed={view === 'list'} onclick={() => setView('list')}>Liste</button>
         </div>
       </div>
-    {#if !locked && !busy}
+    {#if !frozen}
       <p class="hint desktop">
         {brush
           ? 'Cliquez ou glissez sur les demi-journées pour appliquer le pinceau'
@@ -251,9 +257,9 @@
     {/if}
 
     <!-- Read-only while a validation is being sent: a write then would be refused (423). -->
-    <Calendar {ym} map={store.map} locked={locked || busy} {brush} {view} onapply={apply} />
+    <Calendar {ym} map={store.map} locked={frozen} {brush} {view} onapply={apply} />
 
-    {#if !locked && !busy}
+    {#if !frozen}
       <div class="m-brush" role="group" aria-label="Pinceau">
         {#each STATUSES as s (s)}
           <button type="button" class="chip {s}" aria-pressed={brush === s} onclick={() => toggleBrush(s)}>{LABEL[s]}</button>

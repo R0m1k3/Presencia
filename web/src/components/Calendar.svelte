@@ -81,14 +81,17 @@
     focusKey = k;
     (document.querySelector(`[data-k="${k}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
     anchor = k;
+    lastMove = k;
     selection = [k];
     dragging = true;
   }
 
+  let lastMove: HalfKey | null = null;
   function onpointermove(e: PointerEvent) {
     if (!dragging || !anchor) return;
     const k = keyAt(e.clientX, e.clientY);
-    if (!k) return;
+    if (!k || k === lastMove) return; // still on the same half-day
+    lastMove = k;
     if (down && k !== down.key) down.dragged = true;
     selection = selectRange(ym, anchor, k);
   }

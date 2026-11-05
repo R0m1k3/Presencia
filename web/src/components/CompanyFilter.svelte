@@ -4,6 +4,10 @@
   export function storedCompany(): string {
     return sessionStorage.getItem(KEY) ?? 'all';
   }
+  /** Forgets the stored filter if it points at `id` (a deleted company). */
+  export function forgetCompany(id: number) {
+    if (sessionStorage.getItem(KEY) === String(id)) sessionStorage.removeItem(KEY);
+  }
 </script>
 
 <script lang="ts">
@@ -18,6 +22,10 @@
 
   $effect(() => {
     sessionStorage.setItem(KEY, company);
+  });
+  // A filter on a company that no longer exists would show an empty list.
+  $effect(() => {
+    if (companies.length && company !== 'all' && !companies.some((c) => String(c.id) === company)) company = 'all';
   });
 </script>
 

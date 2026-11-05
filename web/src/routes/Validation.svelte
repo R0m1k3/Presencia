@@ -184,7 +184,7 @@
             {#each data.cadres as c (c.id)}
               <tr>
                 <td><span class="cell-main">{c.fullName}</span><br /><span class="cell-sub">{c.email}</span></td>
-                <td class="fill"><StackBar filled={c.filled} {total} /><span class="cell-sub">{filledText(c.filled, total)}</span></td>
+                <td class="fill"><StackBar filled={c.filled} {total} label="{filledText(c.filled, total)} demi-journées renseignées" /><span class="cell-sub">{filledText(c.filled, total)}</span></td>
                 <td>
                   <span class="tag" class:done={c.cadreValidated}>
                     {c.cadreValidated ? `Validé${c.cadreValidatedAt ? ` le ${formatStamp(c.cadreValidatedAt).split(' à ')[0]}` : ''}` : 'En saisie'}
