@@ -10,23 +10,16 @@ use axum::{
 };
 use rust_embed::RustEmbed;
 
+/// `allow_missing`: debug builds run without the UI (build.rs refuses a
+/// release build without it).
 #[derive(RustEmbed)]
 #[folder = "../web/dist"]
+#[allow_missing = true]
 struct Dist;
 
-fn content_type(path: &str) -> &'static str {
-    match path.rsplit_once('.').map(|(_, ext)| ext) {
-        Some("html") => "text/html; charset=utf-8",
-        Some("js" | "mjs") => "text/javascript; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("json") => "application/json",
-        Some("woff2") => "font/woff2",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("ico") => "image/x-icon",
-        _ => "application/octet-stream",
-    }
-}
+/// Served at `/` when the UI was not built (debug builds only).
+const PLACEHOLDER: &str = "<!doctype html><html lang=\"fr\"><meta charset=\"utf-8\"><title>Presencia</title>\
+                           <p>Interface non construite : lancez <code>npm run build</code> dans web/.</p></html>\n";
 
 /// Vite names its build files after their content, so they never change.
 fn cache_control(path: &str) -> &'static str {
@@ -37,6 +30,25 @@ fn cache_control(path: &str) -> &'static str {
     } else {
         "no-cache"
     }
+}
+
+fn content_type(mime: &str) -> HeaderValue {
+    let text = mime.starts_with("text/") || mime == "application/javascript";
+    let value = if text {
+        format!("{mime}; charset=utf-8")
+    } else {
+        mime.to_string()
+    };
+    HeaderValue::from_str(&value).unwrap_or(HeaderValue::from_static("application/octet-stream"))
+}
+
+/// RFC 9110 weak comparison: `W/` is ignored, `*` matches anything (a proxy
+/// that compresses on the fly turns our strong ETag into a weak one).
+fn matches(if_none_match: &[u8], etag: &str) -> bool {
+    if_none_match.split(|b| *b == b',').any(|t| {
+        let t = t.trim_ascii();
+        t == b"*" || t.strip_prefix(b"W/").unwrap_or(t) == etag.as_bytes()
+    })
 }
 
 /// The embedded file for a GET or HEAD on `path`, or `None` to let the router
@@ -54,25 +66,33 @@ pub fn serve(method: &Method, path: &str, headers: &HeaderMap) -> Option<Respons
     if rel.split('/').any(|seg| seg.is_empty() || seg == "." || seg == "..") || rel.contains('\\') {
         return None;
     }
-    let file = Dist::get(rel)?;
-    let etag = format!("\"{}\"", hex(&file.metadata.sha256_hash()[..16]));
-    let etag = HeaderValue::from_str(&etag).expect("hex etag");
-    let fresh = headers.get(header::IF_NONE_MATCH).is_some_and(|v| {
-        v.as_bytes()
-            .split(|b| *b == b',')
-            .any(|t| t.trim_ascii() == etag.as_bytes())
-    });
+    let (data, mime, etag) = match Dist::get(rel) {
+        Some(file) => {
+            let hash = file.metadata.sha256_hash();
+            let etag = format!("\"{}\"", hex(&hash[..16]));
+            (file.data, file.metadata.mimetype().to_string(), etag)
+        }
+        None if rel == "index.html" => (
+            PLACEHOLDER.as_bytes().into(),
+            "text/html".to_string(),
+            "\"placeholder\"".to_string(),
+        ),
+        None => return None,
+    };
 
+    let fresh = headers
+        .get(header::IF_NONE_MATCH)
+        .is_some_and(|v| matches(v.as_bytes(), &etag));
     let mut res = if fresh {
         StatusCode::NOT_MODIFIED.into_response()
     } else {
-        let mut res = Response::new(Body::from(file.data.into_owned()));
-        res.headers_mut()
-            .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type(rel)));
+        // Borrowed static data in release builds: no copy.
+        let mut res = Response::new(Body::from(data));
+        res.headers_mut().insert(header::CONTENT_TYPE, content_type(&mime));
         res
     };
     let h = res.headers_mut();
-    h.insert(header::ETAG, etag);
+    h.insert(header::ETAG, HeaderValue::from_str(&etag).expect("hex etag"));
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static(cache_control(rel)));
     Some(res)
 }
@@ -86,10 +106,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn types_and_cache() {
-        assert_eq!(content_type("assets/index-3fa2.js"), "text/javascript; charset=utf-8");
-        assert_eq!(content_type("fonts/inter-latin.woff2"), "font/woff2");
-        assert_eq!(content_type("LICENSE"), "application/octet-stream");
+    fn cache_types_and_etags() {
         assert_eq!(
             cache_control("assets/index-3fa2.js"),
             "public, max-age=31536000, immutable"
@@ -97,5 +114,12 @@ mod tests {
         assert_eq!(cache_control("fonts/inter-latin.woff2"), "public, max-age=2592000");
         assert_eq!(cache_control("index.html"), "no-cache");
         assert_eq!(cache_control("js/app.js"), "no-cache");
+        assert_eq!(content_type("text/css"), "text/css; charset=utf-8");
+        assert_eq!(content_type("font/woff2"), "font/woff2");
+        assert!(matches(b"\"a\"", "\"a\""));
+        assert!(matches(b"W/\"a\"", "\"a\""));
+        assert!(matches(b"\"b\", W/\"a\"", "\"a\""));
+        assert!(matches(b"*", "\"a\""));
+        assert!(!matches(b"\"b\"", "\"a\""));
     }
 }

@@ -68,6 +68,12 @@ location / {
 Contrôle : `docker exec <conteneur-npm> grep -rn X-Forwarded-For /data/nginx/proxy_host/`
 ne doit montrer, pour cet hôte, que la ligne `$remote_addr`.
 
+Ce bloc remplace celui que NPM génère, avec ce qu'il contient : si l'hôte
+utilise une liste d'accès (« Access List ») ou HSTS, ils ne s'appliquent plus.
+Ajoutez alors leurs directives dans le bloc (par exemple
+`add_header Strict-Transport-Security "max-age=63072000" always;`), et
+vérifiez-les dans le fichier généré.
+
 ### Passage à un seul conteneur (depuis l'API Rust + Nginx), et retour arrière
 
 1. Sauvegarde : `docker compose exec presencia-db pg_dump -U presencia presencia > presencia-AAAAMMJJ.sql`.

@@ -236,7 +236,6 @@ pub async fn delete_month(c: &Ctx) -> ApiResult {
     ok_json(&json!({ "ok": true }))
 }
 
-/// Bulk upsert; every month in the payload passes the same lock checks.
 /// The `entries` of a bulk request (1 to 200, each with a valid date and
 /// period, and a valid status when `with_status`), its target user, and the
 /// check that every month it touches is writable.
@@ -269,6 +268,7 @@ async fn bulk_entries(c: &Ctx, with_status: bool) -> Result<(&Vec<Value>, Target
     Ok((entries, t))
 }
 
+/// Bulk upsert; every month in the payload passes the same lock checks.
 pub async fn bulk(c: &Ctx) -> ApiResult {
     let (entries, t) = bulk_entries(c, true).await?;
 

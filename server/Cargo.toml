@@ -27,7 +27,7 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-graceful", "http1"] }
 tower = { version = "0.5", features = ["util"] }
 # The web UI (../web/dist) is compiled into the binary: one artefact, no volume.
-rust-embed = "8"
+rust-embed = { version = "8", features = ["mime-guess"] }
 
 [dev-dependencies]
 http-body-util = "0.1"

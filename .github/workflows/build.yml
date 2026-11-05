@@ -83,7 +83,7 @@ jobs:
           # The real UI, not build.rs's placeholder, with its headers.
           curl -fsS -D headers.txt http://127.0.0.1:8080/ -o index.html
           grep -qi '^content-security-policy:' headers.txt
-          ! grep -q 'interface non construite' index.html
+          if grep -qi 'interface non construite' index.html; then exit 1; fi
           curl -fsS -o /dev/null http://127.0.0.1:8080/js/app.js
       - name: Container logs
         if: always()
