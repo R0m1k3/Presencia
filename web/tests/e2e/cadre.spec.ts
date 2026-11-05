@@ -1,0 +1,117 @@
+import { test, expect, login, axe, mobileLayout, seed, CADRE_PASSWORD } from './fixtures.ts';
+import type { APIRequestContext, Page } from '@playwright/test';
+
+const YM = '2026-03'; // a past month: the 1st is a Sunday, 22 working days
+
+const half = (page: Page, day: number, period: 'matin' | 'après-midi') =>
+  page.locator(`button[data-k="2026-03-${String(day).padStart(2, '0')}|${period === 'matin' ? 'AM' : 'PM'}"]`);
+
+async function entries(request: APIRequestContext, userId: number) {
+  const r = await request.get(`/api/attendance?year=2026&month=3&user_id=${userId}`);
+  return (await r.json()).entries as { date: string; period: string; status: string }[];
+}
+
+test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', async ({ watched: page, request }, info) => {
+  const { cadre, email } = await seed(request, 'cadre');
+  await login(page, email, CADRE_PASSWORD);
+  await page.goto(`/#/planning/${YM}`);
+  await expect(page.getByRole('heading', { name: /Mars 2026/ })).toBeVisible();
+  await axe(page);
+  if (info.project.name === 'mobile') await mobileLayout(page);
+
+  // Menu of a half-day: 1 = Présent.
+  await half(page, 2, 'matin').click();
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('1');
+  await expect(half(page, 2, 'matin')).toHaveText('Présent');
+
+  // Enter in the menu: the whole day, Présent by default.
+  await half(page, 3, 'matin').click();
+  await page.getByRole('menu').press('Enter');
+  await expect(half(page, 3, 'après-midi')).toHaveText('Présent');
+
+  // Brush: Congé, then a tap writes directly.
+  const brushes = info.project.name === 'mobile' ? page.locator('.m-brush') : page.getByRole('group', { name: 'Pinceau' });
+  await brushes.getByRole('button', { name: /Congé/ }).click();
+  await half(page, 4, 'matin').click();
+  await expect(half(page, 4, 'matin')).toHaveText('Congé');
+  await brushes.getByRole('button', { name: /Congé/ }).click(); // brush off
+
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(4);
+
+  if (info.project.name === 'desktop') {
+    // Drag from Monday 9 morning to Wednesday 11 afternoon: 6 half-days.
+    const a = (await half(page, 9, 'matin').boundingBox())!;
+    const b = (await half(page, 11, 'après-midi').boundingBox())!;
+    await page.mouse.move(a.x + 10, a.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(b.x + 10, b.y + 10, { steps: 8 });
+    await page.mouse.up();
+    const bar = page.getByRole('toolbar', { name: 'Appliquer à la sélection' });
+    await expect(bar).toContainText('6 demi-journées');
+    await bar.getByRole('button', { name: 'RTT' }).click();
+    await expect(half(page, 10, 'après-midi')).toHaveText('RTT');
+    await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(10);
+
+    // Undo puts the six half-days back to empty, on screen and on the server.
+    await page.getByRole('button', { name: /Annuler/ }).click();
+    await expect(half(page, 10, 'après-midi')).toHaveText('après-midi');
+    await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(4);
+
+    // Ctrl+Z after a keyboard write.
+    await half(page, 12, 'matin').focus();
+    await page.keyboard.press('2');
+    await expect(half(page, 12, 'matin')).toHaveText('Non-présent');
+    await page.keyboard.press('Control+z');
+    await expect(half(page, 12, 'matin')).toHaveText('matin');
+  }
+
+  // Fill the working days: what is set stays.
+  await page.getByRole('button', { name: /Remplir les jours ouvrés|Jours ouvrés/ }).click();
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(44);
+  await expect(half(page, 4, 'matin')).toHaveText('Congé');
+  await page.getByRole('button', { name: /Annuler/ }).click();
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(4);
+
+  if (info.project.name === 'desktop') {
+    // Clear all, with confirmation.
+    await page.getByRole('button', { name: 'Tout effacer' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Tout effacer' }).click();
+    await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(0);
+    await page.getByRole('button', { name: /Annuler/ }).click();
+    await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(4);
+    await expect(half(page, 4, 'matin')).toHaveText('Congé');
+  }
+
+  // Validate: the month locks.
+  await page.getByRole('button', { name: 'Valider le mois' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Valider le mois' }).click();
+  await expect(page.getByText(/saisies verrouillées/)).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Pinceau' })).toHaveCount(0);
+  await expect(half(page, 16, 'matin')).toHaveAttribute('aria-disabled', 'true');
+  await axe(page);
+
+  // History lists the month.
+  await page.goto('/#/historique');
+  await expect(page.getByRole('cell', { name: 'Mars 2026' })).toBeVisible();
+  await axe(page);
+  if (info.project.name === 'mobile') await mobileLayout(page);
+});
+
+test('cadre : mon mot de passe', async ({ watched: page, request }, info) => {
+  const { email } = await seed(request, 'pwd');
+  await login(page, email, CADRE_PASSWORD);
+  if (info.project.name === 'mobile') {
+    await page.getByRole('button', { name: 'Compte' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Mon mot de passe' }).click();
+  } else {
+    await page.getByRole('button', { name: 'Mon mot de passe' }).click();
+  }
+  const d = page.getByRole('dialog', { name: 'Mon mot de passe' });
+  await d.getByLabel('Mot de passe actuel').fill(CADRE_PASSWORD);
+  await d.getByLabel('Nouveau mot de passe', { exact: true }).fill('nouveau-mot-de-passe');
+  await d.getByLabel('Nouveau mot de passe, encore').fill('nouveau-mot-de-passe');
+  await axe(page);
+  await d.getByRole('button', { name: 'Changer le mot de passe' }).click();
+  await expect(page.getByText('Mot de passe changé')).toBeVisible();
+});
