@@ -214,6 +214,7 @@
       <label class="field"><span>Mot de passe</span>
         <input class="input" type="password" required minlength="8" autocomplete="new-password" bind:value={rPassword} />
       </label>
+      <p class="hint">8 caractères au moins. Ses sessions ouvertes seront déconnectées.</p>
       {#if formErr}<p class="form-error" role="alert">{formErr}</p>{/if}
     </form>
     {#snippet footer()}

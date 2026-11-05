@@ -73,6 +73,22 @@ de `.env` (ou donnez-lui un `sha-` de l'image `presencia-backend`), puis
 proxy de l'hôte répond 502, redémarrez-le. Pour revenir ensuite à la version
 courante : `git checkout main`.
 
+### Nouvelle interface (Svelte), et retour à l'ancienne
+
+La topologie ne change pas : seule l'image `presencia` change.
+
+1. Avant la mise à jour, notez l'étiquette de l'image en cours :
+   `docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' $(docker compose ps -q presencia-frontend)`
+   donne son commit ; l'étiquette correspondante est `sha-` suivi des 7
+   premiers caractères (visible aussi dans les paquets GHCR du dépôt).
+2. `git pull && docker compose pull && docker compose up -d`.
+
+Retour à l'ancienne interface : mettez `PRESENCIA_TAG=sha-<étiquette notée>`
+dans `.env`, puis `docker compose pull && docker compose up -d`. Pas besoin de
+`git checkout` : le `docker-compose.yml` est le même. La base n'est pas
+touchée par la nouvelle interface. Pour revenir ensuite à la version courante,
+retirez `PRESENCIA_TAG` de `.env` et relancez les deux mêmes commandes.
+
 ### Passage de l'API Node à l'API Rust, et retour arrière
 
 L'API Rust reprend la base existante telle quelle (même schéma, mêmes hachages

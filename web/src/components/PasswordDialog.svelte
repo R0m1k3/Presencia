@@ -39,7 +39,7 @@
     <label class="field"><span>Nouveau mot de passe, encore</span>
       <input class="input" type="password" autocomplete="new-password" required bind:value={again} />
     </label>
-    <p class="hint">8 caractères au moins. Vos autres sessions restent ouvertes.</p>
+    <p class="hint">8 caractères au moins. Vos autres sessions seront déconnectées.</p>
     {#if err}<p class="form-error" role="alert">{err}</p>{/if}
   </form>
   {#snippet footer()}

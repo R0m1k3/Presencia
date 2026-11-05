@@ -41,7 +41,8 @@
   // svelte-ignore state_referenced_locally
   const viewingOther = userId !== null;
   const lock = $derived(store.data ? lockState(store.data, viewingOther) : null);
-  const locked = $derived(lock?.locked ?? true);
+  // Read-only while the screen may show entries the server does not have.
+  const locked = $derived((lock?.locked ?? true) || store.stale);
   const counts = $derived(countHalves(store.map.values()));
   const totalHalves = $derived(workHalves(ym));
   const workFilled = $derived(totalHalves - emptyWorkHalves(ym, store.map).length);
@@ -94,11 +95,13 @@
     const text =
       (empty ? `${empty} demi-journée${empty > 1 ? 's' : ''} ouvrée${empty > 1 ? 's restent vides' : ' reste vide'}. ` : '') +
       'Une fois validé, le mois est transmis à l’administrateur et vos saisies sont verrouillées.';
+    const mark = writes.mark();
     if (!(await confirm(`Valider ${monthName(ym)} ${ym.year}`, text, 'Valider le mois'))) return;
     busy = true;
     try {
-      // A write that failed was dropped: validating now would lock the month without it.
-      if (!(await writes.idle())) return;
+      // A write failed (and the rest was dropped): validating now would lock
+      // the month without it. The failure was already shown.
+      if (!(await writes.settled(mark)) || store.stale) return;
       store.forgetUndo();
       await api('/validations/cadre', 'POST', { year: ym.year, month: ym.month });
       ok('Mois validé et transmis à l’administrateur');
@@ -112,10 +115,11 @@
 
   async function reopen() {
     const name = who?.full_name ?? 'ce cadre';
+    const mark = writes.mark();
     if (!(await confirm('Réouvrir le mois', `${name} pourra de nouveau modifier ${monthName(ym)} ${ym.year}.`, 'Réouvrir'))) return;
     busy = true;
     try {
-      await writes.idle();
+      if (!(await writes.settled(mark)) || store.stale) return;
       store.forgetUndo();
       await api('/validations/cadre/reopen', 'POST', { user_id: userId, year: ym.year, month: ym.month });
       ok('Mois réouvert');
@@ -194,11 +198,20 @@
       </p>
     </section>
 
+    {#if store.stale && store.loadError}
+      <div class="panel stale" role="alert">
+        <p>Le planning n’a pas pu être rechargé : les cases affichées ne sont peut-être pas enregistrées. {store.loadError}</p>
+        <button class="btn small" type="button" onclick={() => store.load()}>Réessayer</button>
+      </div>
+    {/if}
     <LockBanner banner={lock.banner} cadreAt={store.data.cadreValidatedAt} companyAt={store.data.companyValidatedAt} />
 
     {#if !locked || lock.canValidate || lock.canReopen}
       <div class="actions mobile">
-        {#if !locked}<button class="btn" type="button" onclick={fill}><ListChecks />Jours ouvrés</button>{/if}
+        {#if !locked}
+          <button class="icon-btn" type="button" onclick={clearAll} aria-label="Tout effacer" title="Tout effacer"><X /></button>
+          <button class="btn" type="button" onclick={fill}><ListChecks />Jours ouvrés</button>
+        {/if}
         {#if lock.canValidate}
           <button class="btn primary" type="button" disabled={busy} onclick={validate}><Check />Valider le mois</button>
         {/if}
@@ -278,10 +291,14 @@
   .m-brush { display: none; }
   .loading { min-height: 50vh; }
 
+  .stale { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-color: rgba(168, 38, 28, 0.35); color: var(--danger); }
+  .stale p { flex: 1; }
+
   @media (max-width: 899px) {
     .page.planning { padding-bottom: 72px; }
     .actions.desktop, .tools, .hint.desktop { display: none; }
-    .actions.mobile { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); }
+    .actions.mobile { display: flex; }
+    .actions.mobile .btn { flex: 1 1 0; min-width: 0; }
     .tally { gap: var(--sp-1) var(--sp-4); font-size: 13px; }
     .m-brush {
       position: fixed; left: 0; right: 0; bottom: 64px; z-index: 15; background: var(--paper); border-top: 1px solid var(--line);

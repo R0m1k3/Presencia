@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writes } from '../lib/queue.svelte.ts';
   import CalendarDays from '@lucide/svelte/icons/calendar-days';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
   import History from '@lucide/svelte/icons/history';
@@ -27,6 +28,8 @@
 
   async function load() {
     err = '';
+    // Planning writes still queued go first, so the figures include them.
+    await writes.idle();
     try {
       const qs = `year=${ym.year}&month=${ym.month}`;
       const [p, o] = await Promise.all([

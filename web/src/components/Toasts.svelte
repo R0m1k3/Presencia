@@ -30,6 +30,8 @@
   .toast.error { border-color: rgba(168, 38, 28, 0.35); color: var(--danger); }
   @media (max-width: 899px) {
     .toasts { left: 12px; right: 12px; bottom: 76px; align-items: stretch; }
+    /* Above the planning's brush bar, which sits on the tab bar. */
+    :global(body:has(.m-brush)) .toasts { bottom: 136px; }
     .toast { justify-content: space-between; }
     .kbd { display: none; }
   }

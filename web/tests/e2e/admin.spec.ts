@@ -29,6 +29,8 @@ test('admin : utilisateurs, plannings, validation, exports', async ({ watched: p
   // Plannings: open the cadre and correct a half-day.
   await page.goto(`/#/plannings/${YM}`);
   await page.getByPlaceholder('Nom ou e-mail').fill(cadre.full_name);
+  await axe(page);
+  if (mobile) await mobileLayout(page);
   await page.getByRole('row').filter({ hasText: cadre.full_name }).getByRole('link', { name: 'Ouvrir' }).click();
   await expect(page.locator('.page-sub', { hasText: cadre.full_name })).toBeVisible();
   const am = page.locator('button[data-k="2026-03-02|AM"]');

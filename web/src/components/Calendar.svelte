@@ -218,11 +218,23 @@
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      const items = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)')];
+      const at = items.indexOf(document.activeElement as HTMLButtonElement);
+      const next =
+        e.key === 'Home' ? 0
+        : e.key === 'End' ? items.length - 1
+        : e.key === 'ArrowDown' ? (at + 1) % items.length
+        : at <= 0 ? items.length - 1 : at - 1;
+      items[next]?.focus();
     }
   }
 
+  // The menu itself takes the focus, so Enter means « Toute la journée » and
+  // the digits pick a status; the arrows then walk through the items.
   function autofocus(node: HTMLElement) {
-    node.querySelector<HTMLElement>('button')?.focus();
+    node.focus();
   }
 
   $effect(() => {

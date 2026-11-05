@@ -17,6 +17,8 @@ export class PlanningStore implements QueueOwner {
   map = $state.raw<Map<HalfKey, Status>>(new Map());
   loading = $state(true);
   loadError = $state<string | null>(null);
+  /** A write failed and the reload did not succeed yet: the screen may show unsaved entries. */
+  stale = $state(false);
   #undo: Undo | null = null;
   #req = 0;
   /** Bumped on every local edit: a load that saw one in flight is stale. */
@@ -50,6 +52,7 @@ export class PlanningStore implements QueueOwner {
       this.data = data;
       this.map = toMap(data.entries);
       this.loadError = null;
+      this.stale = false;
     } catch (e) {
       if (req === this.#req) this.loadError = message(e);
     } finally {
@@ -130,12 +133,14 @@ export class PlanningStore implements QueueOwner {
   }
 
   failed(e: unknown) {
+    this.stale = true;
     this.forgetUndo();
     if (!(e instanceof ApiError && e.status === 401)) error(message(e));
     void this.load();
   }
 
   dropped() {
+    this.stale = true;
     this.forgetUndo();
     void this.load();
   }

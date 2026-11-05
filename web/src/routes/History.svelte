@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writes } from '../lib/queue.svelte.ts';
   import StackBar from '../components/StackBar.svelte';
   import { api, message } from '../lib/api.ts';
   import { monthTitle, ymKey } from '../lib/logic/dates.ts';
@@ -10,6 +11,8 @@
 
   async function load() {
     err = '';
+    // Planning writes still queued go first, so the figures include them.
+    await writes.idle();
     try {
       rows = await api<HistoryRow[]>('/attendance/history');
     } catch (e) {

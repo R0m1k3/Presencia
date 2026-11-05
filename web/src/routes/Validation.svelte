@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writes } from '../lib/queue.svelte.ts';
   import FileSpreadsheet from '@lucide/svelte/icons/file-spreadsheet';
   import FileText from '@lucide/svelte/icons/file-text';
   import CircleCheck from '@lucide/svelte/icons/circle-check';
@@ -45,6 +46,8 @@
 
   async function load() {
     err = '';
+    // Planning writes still queued go first, so the figures include them.
+    await writes.idle();
     try {
       data = await api<CompanyMonth>(`/validations/company/${companyId}?year=${ym.year}&month=${ym.month}`);
     } catch (e) {
@@ -63,12 +66,16 @@
   async function validateCompany() {
     if (!data || !company) return;
     const reopen = data.companyValidated;
+    const mark = writes.mark();
     const yes = reopen
       ? await confirm('Réouvrir la société', `Les plannings de ${company.name} pour ${monthName(ym)} ${ym.year} redeviennent modifiables.`, 'Réouvrir')
       : await confirm('Valider la société', `Les plannings de ${company.name} pour ${monthName(ym)} ${ym.year} seront verrouillés pour tous, administrateur compris.`, 'Valider la société');
     if (!yes) return;
     busy = true;
     try {
+      // A correction made just before must reach the server first; if it
+      // failed, stop (the failure was already shown).
+      if (!(await writes.settled(mark))) return;
       await api(`/validations/company/${companyId}${reopen ? '/reopen' : ''}`, 'POST', { year: ym.year, month: ym.month });
       ok(reopen ? 'Société réouverte' : 'Société validée');
       badge.refresh();
@@ -94,6 +101,7 @@
   async function exportFile(kind: 'excel' | 'pdf') {
     exporting = kind;
     try {
+      await writes.idle();
       await download(`/export/${kind}/${companyId}?year=${ym.year}&month=${ym.month}`, `presences.${kind === 'excel' ? 'xlsx' : 'pdf'}`);
     } catch (e) {
       error(message(e));

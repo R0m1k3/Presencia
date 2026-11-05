@@ -14,6 +14,9 @@ async function entries(request: APIRequestContext, userId: number) {
 test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', async ({ watched: page, request }, info) => {
   const { cadre, email } = await seed(request, 'cadre');
   await login(page, email, CADRE_PASSWORD);
+  await expect(page.getByRole('heading', { name: /\d{4}/ })).toBeVisible(); // dashboard
+  await axe(page);
+  if (info.project.name === 'mobile') await mobileLayout(page);
   await page.goto(`/#/planning/${YM}`);
   await expect(page.getByRole('heading', { name: /Mars 2026/ })).toBeVisible();
   await axe(page);
@@ -22,12 +25,14 @@ test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', as
   // Menu of a half-day: 1 = Présent.
   await half(page, 2, 'matin').click();
   await expect(page.getByRole('menu')).toBeVisible();
+  await axe(page);
   await page.keyboard.press('1');
   await expect(half(page, 2, 'matin')).toHaveText('Présent');
 
   // Enter in the menu: the whole day, Présent by default.
   await half(page, 3, 'matin').click();
-  await page.getByRole('menu').press('Enter');
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.keyboard.press('Enter');
   await expect(half(page, 3, 'après-midi')).toHaveText('Présent');
 
   // Brush: Congé, then a tap writes directly.
@@ -49,6 +54,7 @@ test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', as
     await page.mouse.up();
     const bar = page.getByRole('toolbar', { name: 'Appliquer à la sélection' });
     await expect(bar).toContainText('6 demi-journées');
+    await axe(page);
     await bar.getByRole('button', { name: 'RTT' }).click();
     await expect(half(page, 10, 'après-midi')).toHaveText('RTT');
     await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(10);
@@ -73,7 +79,7 @@ test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', as
   await page.getByRole('button', { name: /Annuler/ }).click();
   await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(4);
 
-  if (info.project.name === 'desktop') {
+  {
     // Clear all, with confirmation.
     await page.getByRole('button', { name: 'Tout effacer' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Tout effacer' }).click();
@@ -136,4 +142,22 @@ test('cadre : une écriture refusée recharge le mois', async ({ page, request }
   await expect(page.getByText('Erreur serveur')).toBeVisible();
   await expect(page.getByRole('button', { name: /Annuler/ })).toHaveCount(0);
   expect((await entries(request, cadre.id)).length).toBe(1);
+});
+
+test('connexion et déconnexion', async ({ watched: page, request }, info) => {
+  const { email } = await seed(request, 'out');
+  await page.goto('/');
+  await expect(page.getByLabel('E-mail')).toBeVisible();
+  await axe(page);
+  if (info.project.name === 'mobile') await mobileLayout(page);
+  await login(page, email, CADRE_PASSWORD);
+  if (info.project.name === 'mobile') {
+    await page.getByRole('button', { name: 'Compte' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Se déconnecter' }).click();
+  } else {
+    await page.getByRole('button', { name: 'Se déconnecter' }).click();
+  }
+  await expect(page.getByLabel('E-mail')).toBeVisible();
+  await page.goto('/#/historique');
+  await expect(page.getByLabel('E-mail')).toBeVisible();
 });

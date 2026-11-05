@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { writes } from '../lib/queue.svelte.ts';
   import MonthNav from '../components/MonthNav.svelte';
   import StackBar from '../components/StackBar.svelte';
   import CompanyFilter from '../components/CompanyFilter.svelte';
@@ -23,6 +24,8 @@
   async function load(filter: string) {
     const mine = ++req;
     err = '';
+    // Planning writes still queued go first, so the figures include them.
+    await writes.idle();
     try {
       const qs = filter !== 'all' ? `?company_id=${filter}` : '';
       const list = (await api<UserRow[]>(`/users${qs}`)).filter((u) => u.role === 'cadre');

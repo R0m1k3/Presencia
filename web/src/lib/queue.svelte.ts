@@ -16,8 +16,9 @@ class WriteQueue {
   pending = $state(0);
   #jobs: Job[] = [];
   #running = false;
-  #failedInRun = false;
-  #idle: ((ok: boolean) => void)[] = [];
+  /** Failed writes since the page loaded. */
+  #failures = 0;
+  #idle: (() => void)[] = [];
 
   push(run: () => Promise<void>, owner: QueueOwner) {
     this.#jobs.push({ run, owner });
@@ -25,23 +26,37 @@ class WriteQueue {
     void this.#drain();
   }
 
-  /** Resolves once every queued write is done: true if none failed or was dropped. */
-  idle(): Promise<boolean> {
-    if (!this.#running && this.#jobs.length === 0) return Promise.resolve(true);
+  /** Resolves once every queued write is done (or dropped). */
+  idle(): Promise<void> {
+    if (!this.#running && this.#jobs.length === 0) return Promise.resolve();
     return new Promise((resolve) => this.#idle.push(resolve));
+  }
+
+  /** A mark to pass to settled() later. */
+  mark(): number {
+    return this.#failures;
+  }
+
+  /**
+   * Waits for the queue, then tells whether every write since `mark` went
+   * through. Take the mark before asking for a confirmation: a write that
+   * fails while the dialog is open counts too.
+   */
+  async settled(mark: number): Promise<boolean> {
+    await this.idle();
+    return this.#failures === mark;
   }
 
   async #drain() {
     if (this.#running) return;
     this.#running = true;
-    this.#failedInRun = false;
     while (this.#jobs.length) {
       const job = this.#jobs.shift()!;
       this.pending = this.#jobs.length + 1;
       try {
         await job.run();
       } catch (e) {
-        this.#failedInRun = true;
+        this.#failures++;
         const others = new Set(this.#jobs.map((j) => j.owner));
         others.delete(job.owner);
         this.#jobs = [];
@@ -51,8 +66,7 @@ class WriteQueue {
     }
     this.#running = false;
     this.pending = 0;
-    const ok = !this.#failedInRun;
-    for (const resolve of this.#idle.splice(0)) resolve(ok);
+    for (const resolve of this.#idle.splice(0)) resolve();
   }
 }
 
