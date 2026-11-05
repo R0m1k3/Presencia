@@ -44,6 +44,7 @@
   const locked = $derived(lock?.locked ?? true);
   const counts = $derived(countHalves(store.map.values()));
   const totalHalves = $derived(workHalves(ym));
+  const workFilled = $derived(totalHalves - emptyWorkHalves(ym, store.map).length);
   const href = (m: YearMonth) => (viewingOther ? `#/plannings/${userId}/${ymKey(m)}` : `#/planning/${ymKey(m)}`);
 
   onMount(() => {
@@ -96,7 +97,8 @@
     if (!(await confirm(`Valider ${monthName(ym)} ${ym.year}`, text, 'Valider le mois'))) return;
     busy = true;
     try {
-      await writes.idle();
+      // A write that failed was dropped: validating now would lock the month without it.
+      if (!(await writes.idle())) return;
       store.forgetUndo();
       await api('/validations/cadre', 'POST', { year: ym.year, month: ym.month });
       ok('Mois validé et transmis à l’administrateur');
@@ -185,7 +187,7 @@
     <section class="summary" aria-label="Le mois en un coup d’œil">
       <Ribbon {ym} map={store.map} />
       <p class="tally">
-        <span><strong>{counts.filled}</strong> demi-journées sur {totalHalves} renseignées</span>
+        <span><strong>{workFilled}</strong> demi-journées ouvrées sur {totalHalves} renseignées</span>
         {#each STATUSES as s (s)}
           <span class="k"><span class="sw {s}"></span><strong>{days(counts[s])} j</strong> {s === 'rtt' ? 'RTT' : LABEL[s].toLowerCase()}</span>
         {/each}

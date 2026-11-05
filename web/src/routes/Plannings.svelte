@@ -19,7 +19,9 @@
 
   api<Company[]>('/companies').then((c) => (companies = c)).catch(() => {});
 
+  let req = 0;
   async function load(filter: string) {
+    const mine = ++req;
     err = '';
     try {
       const qs = filter !== 'all' ? `?company_id=${filter}` : '';
@@ -29,14 +31,14 @@
       await Promise.all(
         ids.map((cid) =>
           api<CompanyMonth>(`/validations/company/${cid}?year=${ym.year}&month=${ym.month}`)
-            .then((v) => v.cadres.forEach((c) => byId.set(c.id, c)))
-            .catch(() => {}),
+            .then((v) => v.cadres.forEach((c) => byId.set(c.id, c))),
         ),
       );
+      if (mine !== req) return;
       cadres = list;
       month = byId;
     } catch (e) {
-      err = message(e);
+      if (mine === req) err = message(e);
     }
   }
 

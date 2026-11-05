@@ -3,7 +3,7 @@
 
 import { api, ApiError, message } from './api.ts';
 import { error, toasts } from './toast.svelte.ts';
-import { writes } from './queue.svelte.ts';
+import { writes, type QueueOwner } from './queue.svelte.ts';
 import type { Planning } from './types.ts';
 import type { YearMonth } from './logic/dates.ts';
 import { toMap, type HalfKey } from './logic/grid.ts';
@@ -12,13 +12,15 @@ import { LABEL, type Status } from './logic/status.ts';
 
 type Undo = { before: Change; month: boolean };
 
-export class PlanningStore {
+export class PlanningStore implements QueueOwner {
   data = $state<Planning | null>(null);
   map = $state.raw<Map<HalfKey, Status>>(new Map());
   loading = $state(true);
   loadError = $state<string | null>(null);
   #undo: Undo | null = null;
   #req = 0;
+  /** Bumped on every local edit: a load that saw one in flight is stale. */
+  #edits = 0;
 
   constructor(
     readonly ym: YearMonth,
@@ -33,11 +35,18 @@ export class PlanningStore {
   async load() {
     const req = ++this.#req;
     this.loading = true;
+    // Writes still queued (this screen's or a previous one's) go first, so
+    // the answer includes them.
+    await writes.idle();
+    if (req !== this.#req) return;
+    const edits = this.#edits;
     const qs = `year=${this.ym.year}&month=${this.ym.month}${this.userId === null ? '' : `&user_id=${this.userId}`}`;
     try {
       const data = await api<Planning>(`/attendance?${qs}`);
       // A later load (or a month change) wins over a late answer.
       if (req !== this.#req) return;
+      // Edited while the request was out: the answer misses those writes.
+      if (edits !== this.#edits) return void this.load();
       this.data = data;
       this.map = toMap(data.entries);
       this.loadError = null;
@@ -53,6 +62,7 @@ export class PlanningStore {
     const eff = effective(change, this.map);
     if (eff.size === 0) return 0;
     const before = snapshot(eff, this.map);
+    this.#edits++;
     this.map = apply(eff, this.map);
     this.#queue(eff);
     if (opts.undoable !== false) this.#offerUndo({ before, month: false }, eff);
@@ -64,10 +74,11 @@ export class PlanningStore {
     const n = this.map.size;
     if (n === 0) return 0;
     const before: Change = new Map(this.map);
+    this.#edits++;
     this.map = new Map();
     writes.push(
       () => api('/attendance/month', 'DELETE', { year: this.ym.year, month: this.ym.month, ...this.#target }).then(() => {}),
-      (e) => this.#failed(e),
+      this,
     );
     this.#offerUndo({ before, month: true }, null);
     return n;
@@ -78,6 +89,7 @@ export class PlanningStore {
     if (!u) return;
     this.#undo = null;
     toasts.dismissUndo();
+    this.#edits++;
     this.map = apply(u.before, this.map);
     this.#queue(u.before);
   }
@@ -105,22 +117,26 @@ export class PlanningStore {
   #queue(change: Change) {
     const { set, clear } = toRequests(change);
     const t = this.#target;
-    const fail = (e: unknown) => this.#failed(e);
     if (set.length === 1) {
-      writes.push(() => api('/attendance', 'PUT', { ...set[0], ...t }).then(() => {}), fail);
+      writes.push(() => api('/attendance', 'PUT', { ...set[0], ...t }).then(() => {}), this);
     } else if (set.length > 1) {
-      writes.push(() => api('/attendance/bulk', 'PUT', { entries: set, ...t }).then(() => {}), fail);
+      writes.push(() => api('/attendance/bulk', 'PUT', { entries: set, ...t }).then(() => {}), this);
     }
     if (clear.length === 1) {
-      writes.push(() => api('/attendance', 'DELETE', { ...clear[0], ...t }).then(() => {}), fail);
+      writes.push(() => api('/attendance', 'DELETE', { ...clear[0], ...t }).then(() => {}), this);
     } else if (clear.length > 1) {
-      writes.push(() => api('/attendance/bulk', 'DELETE', { entries: clear, ...t }).then(() => {}), fail);
+      writes.push(() => api('/attendance/bulk', 'DELETE', { entries: clear, ...t }).then(() => {}), this);
     }
   }
 
-  #failed(e: unknown) {
+  failed(e: unknown) {
     this.forgetUndo();
     if (!(e instanceof ApiError && e.status === 401)) error(message(e));
+    void this.load();
+  }
+
+  dropped() {
+    this.forgetUndo();
     void this.load();
   }
 }

@@ -29,12 +29,15 @@
 
   api<Company[]>('/companies').then((c) => (companies = c)).catch(() => {});
 
+  let req = 0;
   async function load(filter: string) {
+    const mine = ++req;
     err = '';
     try {
-      list = await api<UserRow[]>(`/users${filter !== 'all' ? `?company_id=${filter}` : ''}`);
+      const rows = await api<UserRow[]>(`/users${filter !== 'all' ? `?company_id=${filter}` : ''}`);
+      if (mine === req) list = rows;
     } catch (e) {
-      err = message(e);
+      if (mine === req) err = message(e);
     }
   }
   $effect(() => {

@@ -2,7 +2,12 @@
 // fallback needed, reload-safe.
 
 function current(): string {
-  const h = decodeURI(location.hash.replace(/^#/, ''));
+  let h = location.hash.replace(/^#/, '');
+  try {
+    h = decodeURI(h);
+  } catch {
+    return '/'; // a malformed escape: the dashboard rather than a blank page
+  }
   return h.startsWith('/') ? h : '/';
 }
 

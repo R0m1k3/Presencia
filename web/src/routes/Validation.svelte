@@ -7,6 +7,7 @@
   import { api, download, message } from '../lib/api.ts';
   import { confirm } from '../lib/confirm.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
+  import { badge } from '../lib/badge.svelte.ts';
   import { ok, error } from '../lib/toast.svelte.ts';
   import { currentYm, formatStamp, lastMonths, monthName, monthTitle, ymKey, type YearMonth } from '../lib/logic/dates.ts';
   import { workHalves } from '../lib/logic/totals.ts';
@@ -70,6 +71,7 @@
     try {
       await api(`/validations/company/${companyId}${reopen ? '/reopen' : ''}`, 'POST', { year: ym.year, month: ym.month });
       ok(reopen ? 'Société réouverte' : 'Société validée');
+      badge.refresh();
     } catch (e) {
       error(message(e));
     } finally {

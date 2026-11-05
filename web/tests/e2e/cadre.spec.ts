@@ -115,3 +115,25 @@ test('cadre : mon mot de passe', async ({ watched: page, request }, info) => {
   await d.getByRole('button', { name: 'Changer le mot de passe' }).click();
   await expect(page.getByText('Mot de passe changé')).toBeVisible();
 });
+
+// Plain `page`: the failed request logs a console error on purpose.
+test('cadre : une écriture refusée recharge le mois', async ({ page, request }) => {
+  const { cadre, email } = await seed(request, 'fail');
+  await login(page, email, CADRE_PASSWORD);
+  await page.goto(`/#/planning/${YM}`);
+  await half(page, 2, 'matin').click();
+  await page.keyboard.press('1');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(1);
+
+  await page.route('**/api/attendance', (r) =>
+    r.request().method() === 'PUT' ? r.fulfill({ status: 500, json: { error: 'Erreur serveur' } }) : r.fallback(),
+  );
+  await half(page, 3, 'matin').click();
+  await page.keyboard.press('1');
+  // Shown at once, then put back to what the server has.
+  await expect(half(page, 3, 'matin')).toHaveText('matin');
+  await expect(half(page, 2, 'matin')).toHaveText('Présent');
+  await expect(page.getByText('Erreur serveur')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Annuler/ })).toHaveCount(0);
+  expect((await entries(request, cadre.id)).length).toBe(1);
+});

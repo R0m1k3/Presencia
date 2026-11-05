@@ -1,5 +1,6 @@
 <script lang="ts">
   // App frame: sidebar on desktop, tab bar under 900 px; entries by role.
+  import { badge } from '../lib/badge.svelte.ts';
   import type { Snippet } from 'svelte';
   import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
   import CalendarDays from '@lucide/svelte/icons/calendar-days';
@@ -51,9 +52,10 @@
   const tabs = $derived(items.slice(0, 3));
   const more = $derived(items.slice(3));
 
-  // Companies waiting for the admin, refreshed on every screen change.
+  // Companies waiting for the admin: on sign-in, then after each action
+  // that can change the count (badge.refresh()).
   $effect(() => {
-    void router.path;
+    void badge.version;
     if (!session.isAdmin) return;
     const now = currentYm();
     api<Overview>(`/validations/overview?year=${now.year}&month=${now.month}`)

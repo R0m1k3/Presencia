@@ -1,46 +1,58 @@
 // The single write queue (plan-webui §5.2): one request at a time, in order.
 // The screen is updated before a write is sent; when one fails, every write
-// still waiting is dropped and the owner reloads what the server really has.
+// still waiting is dropped and each screen that owned one reloads what the
+// server really has.
 
-type Job = { run: () => Promise<void>; onFail: (e: unknown) => void; generation: number };
+export interface QueueOwner {
+  /** Its own write failed: tell the user, then reload. */
+  failed(e: unknown): void;
+  /** Its writes were dropped after another owner's failure: reload. */
+  dropped(): void;
+}
+
+type Job = { run: () => Promise<void>; owner: QueueOwner };
 
 class WriteQueue {
   pending = $state(0);
   #jobs: Job[] = [];
   #running = false;
-  #generation = 0;
-  #idle: (() => void)[] = [];
+  #failedInRun = false;
+  #idle: ((ok: boolean) => void)[] = [];
 
-  push(run: () => Promise<void>, onFail: (e: unknown) => void) {
-    this.#jobs.push({ run, onFail, generation: this.#generation });
+  push(run: () => Promise<void>, owner: QueueOwner) {
+    this.#jobs.push({ run, owner });
     this.pending = this.#jobs.length + (this.#running ? 1 : 0);
     void this.#drain();
   }
 
-  /** Resolves once every queued write is done (or dropped). */
-  idle(): Promise<void> {
-    if (!this.#running && this.#jobs.length === 0) return Promise.resolve();
+  /** Resolves once every queued write is done: true if none failed or was dropped. */
+  idle(): Promise<boolean> {
+    if (!this.#running && this.#jobs.length === 0) return Promise.resolve(true);
     return new Promise((resolve) => this.#idle.push(resolve));
   }
 
   async #drain() {
     if (this.#running) return;
     this.#running = true;
+    this.#failedInRun = false;
     while (this.#jobs.length) {
       const job = this.#jobs.shift()!;
       this.pending = this.#jobs.length + 1;
-      if (job.generation !== this.#generation) continue;
       try {
         await job.run();
       } catch (e) {
-        this.#generation++;
+        this.#failedInRun = true;
+        const others = new Set(this.#jobs.map((j) => j.owner));
+        others.delete(job.owner);
         this.#jobs = [];
-        job.onFail(e);
+        job.owner.failed(e);
+        for (const o of others) o.dropped();
       }
     }
     this.#running = false;
     this.pending = 0;
-    for (const resolve of this.#idle.splice(0)) resolve();
+    const ok = !this.#failedInRun;
+    for (const resolve of this.#idle.splice(0)) resolve(ok);
   }
 }
 

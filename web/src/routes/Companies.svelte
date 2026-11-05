@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { badge } from '../lib/badge.svelte.ts';
   import Plus from '@lucide/svelte/icons/plus';
   import Dialog from '../components/Dialog.svelte';
   import { api, message } from '../lib/api.ts';
@@ -39,6 +40,7 @@
       if (editing === 'new') await api('/companies', 'POST', { name: name.trim() });
       else await api(`/companies/${editing.id}`, 'PUT', { name: name.trim() });
       ok(editing === 'new' ? 'Société créée' : 'Société renommée');
+      badge.refresh();
       editing = null;
       await load();
     } catch (e) {
@@ -57,6 +59,7 @@
     try {
       await api(`/companies/${c.id}`, 'DELETE');
       ok('Société supprimée');
+      badge.refresh();
     } catch (e) {
       error(message(e));
     }

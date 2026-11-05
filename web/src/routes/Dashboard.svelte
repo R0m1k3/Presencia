@@ -8,7 +8,7 @@
   import { api, message } from '../lib/api.ts';
   import { session } from '../lib/session.svelte.ts';
   import { currentYm, monthName, monthTitle, ymKey } from '../lib/logic/dates.ts';
-  import { toMap } from '../lib/logic/grid.ts';
+  import { emptyWorkHalves, toMap } from '../lib/logic/grid.ts';
   import { countHalves, days, percent, workHalves } from '../lib/logic/totals.ts';
   import type { Overview, Planning } from '../lib/types.ts';
 
@@ -21,6 +21,8 @@
 
   const map = $derived(mine ? toMap(mine.entries) : new Map());
   const counts = $derived(countHalves(map.values()));
+  // Workdays only, like `total`: a weekend entry does not count towards it.
+  const filled = $derived(total - emptyWorkHalves(ym, map).length);
   const validated = $derived(!!mine && (mine.cadreValidated || mine.companyValidated));
 
   async function load() {
@@ -52,7 +54,7 @@
       {#if session.isAdmin && overview}
         {overview.companies.length} société{overview.companies.length > 1 ? 's' : ''}, {overview.totalActiveCadres} cadre{overview.totalActiveCadres > 1 ? 's' : ''} actif{overview.totalActiveCadres > 1 ? 's' : ''}
       {:else if mine}
-        Votre mois de {monthName(ym)} est renseigné à {percent(counts.filled, total)} %
+        Votre mois de {monthName(ym)} est renseigné à {percent(filled, total)} %
       {/if}
     </p>
   </header>
@@ -65,9 +67,9 @@
         <div class="panel tile"><p class="tile-label">À valider</p><p class="tile-value">{overview.pendingCompanies}</p><p class="tile-hint">sociétés pas encore validées</p></div>
         <div class="panel tile"><p class="tile-label">Cadres en retard</p><p class="tile-value">{overview.lateCadres}</p><p class="tile-hint">mois non validé</p></div>
         <div class="panel tile"><p class="tile-label">Sociétés</p><p class="tile-value">{overview.companies.length}</p><p class="tile-hint">{overview.totalActiveCadres} cadres actifs</p></div>
-        <div class="panel tile"><p class="tile-label">Ma saisie</p><p class="tile-value">{counts.filled}/{total}</p><p class="tile-hint">demi-journées ouvrées</p></div>
+        <div class="panel tile"><p class="tile-label">Ma saisie</p><p class="tile-value">{filled}/{total}</p><p class="tile-hint">demi-journées ouvrées</p></div>
       {:else}
-        <div class="panel tile"><p class="tile-label">Renseigné</p><p class="tile-value">{counts.filled}/{total}</p><p class="tile-hint">demi-journées ouvrées</p></div>
+        <div class="panel tile"><p class="tile-label">Renseigné</p><p class="tile-value">{filled}/{total}</p><p class="tile-hint">demi-journées ouvrées</p></div>
         <div class="panel tile"><p class="tile-label">Présent</p><p class="tile-value">{days(counts.present)} j</p><p class="tile-hint">sur le mois</p></div>
         <div class="panel tile"><p class="tile-label">Congé</p><p class="tile-value">{days(counts.conge)} j</p><p class="tile-hint">sur le mois</p></div>
         <div class="panel tile"><p class="tile-label">RTT</p><p class="tile-value">{days(counts.rtt)} j</p><p class="tile-hint">sur le mois</p></div>
@@ -100,7 +102,7 @@
         {/if}
         <a class="shortcut" href="#/planning/{key}">
           <span class="shortcut-icon"><CalendarDays /></span>
-          <span class="grow"><span class="cell-main">Compléter mon planning</span><br /><span class="cell-sub">{Math.max(0, total - counts.filled)} demi-journées ouvrées à renseigner</span></span>
+          <span class="grow"><span class="cell-main">Compléter mon planning</span><br /><span class="cell-sub">{total - filled} demi-journées ouvrées à renseigner</span></span>
           <ChevronRight />
         </a>
         {#if !session.isAdmin}
