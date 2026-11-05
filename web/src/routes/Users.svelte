@@ -28,7 +28,13 @@
   let resetFor = $state<UserRow | null>(null);
   let rPassword = $state('');
 
-  api<Company[]>('/companies').then((c) => (companies = c)).catch(() => {});
+  let companiesLoaded = $state(false);
+  api<Company[]>('/companies')
+    .then((c) => {
+      companies = c;
+      companiesLoaded = true;
+    })
+    .catch(() => {});
 
   let req = 0;
   async function load(filter: string) {
@@ -108,9 +114,9 @@
     } catch (e) {
       error(message(e));
     } finally {
+      await load(company);
       toggling = null;
     }
-    await load(company);
   }
 
   async function resetPassword(e: SubmitEvent) {
@@ -139,7 +145,7 @@
       <p class="page-sub">{list ? `${shown.length} compte${shown.length > 1 ? 's' : ''}` : ' '}</p>
     </div>
     <div class="row">
-      <CompanyFilter {companies} bind:company bind:query />
+      <CompanyFilter {companies} loaded={companiesLoaded} bind:company bind:query />
       <button class="btn primary" type="button" onclick={() => open('new')}><Plus />Nouvel utilisateur</button>
     </div>
   </header>

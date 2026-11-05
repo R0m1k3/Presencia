@@ -101,12 +101,16 @@
       'Une fois validé, le mois est transmis à l’administrateur et vos saisies sont verrouillées.';
     const mark = writes.mark();
     if (!(await confirm(`Valider ${monthName(ym)} ${ym.year}`, text, 'Valider le mois'))) return;
+    // The month is validated as confirmed: no undo from here on.
+    store.forgetUndo();
     busy = true;
     try {
       // A write failed (and the rest was dropped): validating now would lock
-      // the month without it. The failure was already shown.
-      if (!(await writes.settled(mark)) || store.stale) return;
-      store.forgetUndo();
+      // the month without it. Say so: the first message may be gone.
+      if (!(await writes.settled(mark)) || store.stale) {
+        error('Mois non validé : une saisie n’a pas pu être enregistrée. Vérifiez le planning, puis validez à nouveau.');
+        return;
+      }
       await api('/validations/cadre', 'POST', { year: ym.year, month: ym.month });
       ok('Mois validé et transmis à l’administrateur');
     } catch (e) {
@@ -122,10 +126,13 @@
     const name = who?.full_name ?? 'ce cadre';
     const mark = writes.mark();
     if (!(await confirm('Réouvrir le mois', `${name} pourra de nouveau modifier ${monthName(ym)} ${ym.year}.`, 'Réouvrir'))) return;
+    store.forgetUndo();
     busy = true;
     try {
-      if (!(await writes.settled(mark)) || store.stale) return;
-      store.forgetUndo();
+      if (!(await writes.settled(mark)) || store.stale) {
+        error('Réouverture annulée : une saisie n’a pas pu être enregistrée. Vérifiez le planning, puis réessayez.');
+        return;
+      }
       await api('/validations/cadre/reopen', 'POST', { user_id: userId, year: ym.year, month: ym.month });
       ok('Mois réouvert');
     } catch (e) {
@@ -174,15 +181,15 @@
     </div>
     {#if lock}
       <div class="actions desktop">
-        {#if !frozen}
-          <button class="btn ghost" type="button" onclick={clearAll}><X />Tout effacer</button>
-          <button class="btn" type="button" onclick={fill}><ListChecks />Remplir les jours ouvrés</button>
+        {#if !locked}
+          <button class="btn ghost" type="button" disabled={busy} onclick={clearAll}><X />Tout effacer</button>
+          <button class="btn" type="button" disabled={busy} onclick={fill}><ListChecks />Remplir les jours ouvrés</button>
         {/if}
         {#if lock.canValidate}
-          <button class="btn primary" type="button" disabled={busy} onclick={validate}><Check />Valider le mois</button>
+          <button class="btn primary" type="button" disabled={busy || store.stale} onclick={validate}><Check />{busy ? 'Validation…' : 'Valider le mois'}</button>
         {/if}
         {#if lock.canReopen}
-          <button class="btn" type="button" disabled={busy} onclick={reopen}><RotateCcw />Réouvrir le mois</button>
+          <button class="btn" type="button" disabled={busy || store.stale} onclick={reopen}><RotateCcw />{busy ? 'Réouverture…' : 'Réouvrir le mois'}</button>
         {/if}
       </div>
     {/if}
@@ -206,7 +213,7 @@
 
     {#if store.stale && store.loadError}
       <div class="panel stale" role="alert">
-        <p>Le planning n’a pas pu être rechargé : les cases affichées ne sont peut-être pas enregistrées. {store.loadError}</p>
+        <p>Le planning n’a pas pu être rechargé : ce qui est affiché ne correspond peut-être plus à ce qui est enregistré. {store.loadError}</p>
         <button class="btn small" type="button" onclick={() => store.load()}>Réessayer</button>
       </div>
     {/if}
@@ -214,40 +221,40 @@
 
     {#if !locked || lock.canValidate || lock.canReopen}
       <div class="actions mobile">
-        {#if !frozen}
-          <button class="icon-btn" type="button" onclick={clearAll} aria-label="Tout effacer" title="Tout effacer"><X /></button>
-          <button class="btn" type="button" onclick={fill}><ListChecks />Jours ouvrés</button>
+        {#if !locked}
+          <button class="icon-btn" type="button" disabled={busy} onclick={clearAll} aria-label="Tout effacer" title="Tout effacer"><X /></button>
+          <button class="btn" type="button" disabled={busy} onclick={fill}><ListChecks />Jours ouvrés</button>
         {/if}
         {#if lock.canValidate}
-          <button class="btn primary" type="button" disabled={busy} onclick={validate}><Check />Valider le mois</button>
+          <button class="btn primary" type="button" disabled={busy || store.stale} onclick={validate}><Check />{busy ? 'Validation…' : 'Valider le mois'}</button>
         {/if}
         {#if lock.canReopen}
-          <button class="btn" type="button" disabled={busy} onclick={reopen}><RotateCcw />Réouvrir</button>
+          <button class="btn" type="button" disabled={busy || store.stale} onclick={reopen}><RotateCcw />{busy ? 'Réouverture…' : 'Réouvrir'}</button>
         {/if}
       </div>
     {/if}
 
     <div class="tools">
-      {#if !frozen}
+      {#if !locked}
         <div class="brush" role="group" aria-label="Pinceau">
           <span class="brush-label"><Brush />Pinceau</span>
           {#each STATUSES as s, i (s)}
-            <button type="button" class="chip {s}" aria-pressed={brush === s} onclick={() => toggleBrush(s)}>
+            <button type="button" class="chip {s}" disabled={busy} aria-pressed={brush === s} onclick={() => toggleBrush(s)}>
               <span class="sw {s}"></span>{LABEL[s]}<kbd>{i + 1}</kbd>
             </button>
           {/each}
-          <button type="button" class="chip" aria-pressed={brush === 'erase'} onclick={() => toggleBrush('erase')}>
+          <button type="button" class="chip" disabled={busy} aria-pressed={brush === 'erase'} onclick={() => toggleBrush('erase')}>
             <Eraser size={16} />Effacer<kbd>0</kbd>
           </button>
         </div>
       {:else}
         <span></span>
       {/if}
-        <div class="views" role="group" aria-label="Affichage">
-          <button type="button" class="chip" aria-pressed={view === 'grid'} onclick={() => setView('grid')}>Grille</button>
-          <button type="button" class="chip" aria-pressed={view === 'list'} onclick={() => setView('list')}>Liste</button>
-        </div>
+      <div class="views" role="group" aria-label="Affichage">
+        <button type="button" class="chip" aria-pressed={view === 'grid'} onclick={() => setView('grid')}>Grille</button>
+        <button type="button" class="chip" aria-pressed={view === 'list'} onclick={() => setView('list')}>Liste</button>
       </div>
+    </div>
     {#if !frozen}
       <p class="hint desktop">
         {brush
@@ -256,15 +263,16 @@
       </p>
     {/if}
 
+    {#if busy}<p class="visually-hidden" role="status">Envoi en cours, le planning est figé</p>{/if}
     <!-- Read-only while a validation is being sent: a write then would be refused (423). -->
     <Calendar {ym} map={store.map} locked={frozen} {brush} {view} onapply={apply} />
 
-    {#if !frozen}
+    {#if !locked}
       <div class="m-brush" role="group" aria-label="Pinceau">
         {#each STATUSES as s (s)}
-          <button type="button" class="chip {s}" aria-pressed={brush === s} onclick={() => toggleBrush(s)}>{LABEL[s]}</button>
+          <button type="button" disabled={busy} class="chip {s}" aria-pressed={brush === s} onclick={() => toggleBrush(s)}>{LABEL[s]}</button>
         {/each}
-        <button type="button" class="chip erase" aria-pressed={brush === 'erase'} onclick={() => toggleBrush('erase')} aria-label="Effacer"><Eraser size={16} /></button>
+        <button type="button" disabled={busy} class="chip erase" aria-pressed={brush === 'erase'} onclick={() => toggleBrush('erase')} aria-label="Effacer"><Eraser size={16} /></button>
       </div>
     {/if}
   {:else}

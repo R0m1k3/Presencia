@@ -128,3 +128,20 @@ test('app.css colours meet WCAG AA', () => {
     assert.ok(contrast(v(t), v('bg')) >= 4.5, `${t} sur bg`);
   }
 });
+
+test('people: search, ready to validate, filled counts', async () => {
+  const { search, isReady, filledText, filledLabel } = await import('../../src/lib/logic/people.ts');
+  const list = [
+    { full_name: 'Alice Martin', email: 'alice@ui.fr' },
+    { full_name: 'Bruno Lefèvre', email: 'bruno@ui.fr' },
+  ];
+  assert.deepEqual(search(list, '  MART '), [list[0]]);
+  assert.deepEqual(search(list, 'ui.fr'), list);
+  assert.equal(search(list, ''), list);
+  assert.equal(isReady({ companyValidated: false, activeCadres: 2, validatedCadres: 2 }), true);
+  assert.equal(isReady({ companyValidated: false, activeCadres: 0, validatedCadres: 0 }), false);
+  assert.equal(isReady({ companyValidated: true, activeCadres: 2, validatedCadres: 2 }), false);
+  assert.equal(filledText(12, 44), '12/44');
+  assert.equal(filledText(46, 44), '46'); // weekends included by the API
+  assert.equal(filledLabel(12, 44), '12 sur 44 demi-journées ouvrées renseignées');
+});

@@ -19,3 +19,10 @@ export function isReady(c: { companyValidated: boolean; activeCadres: number; va
 export function filledText(filled: number, total: number): string {
   return filled > total ? `${filled}` : `${filled}/${total}`;
 }
+
+/** The same count, for screen readers (« 12/44 » would be read « barre oblique »). */
+export function filledLabel(filled: number, total: number): string {
+  return filled > total
+    ? `${filled} demi-journées renseignées, week-ends compris`
+    : `${filled} sur ${total} demi-journées ouvrées renseignées`;
+}

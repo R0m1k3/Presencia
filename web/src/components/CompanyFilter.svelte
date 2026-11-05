@@ -4,10 +4,6 @@
   export function storedCompany(): string {
     return sessionStorage.getItem(KEY) ?? 'all';
   }
-  /** Forgets the stored filter if it points at `id` (a deleted company). */
-  export function forgetCompany(id: number) {
-    if (sessionStorage.getItem(KEY) === String(id)) sessionStorage.removeItem(KEY);
-  }
 </script>
 
 <script lang="ts">
@@ -16,16 +12,17 @@
 
   let {
     companies,
+    loaded,
     company = $bindable('all'),
     query = $bindable(''),
-  }: { companies: Company[]; company?: string; query?: string } = $props();
+  }: { companies: Company[]; /** `companies` came from the server. */ loaded: boolean; company?: string; query?: string } = $props();
 
   $effect(() => {
     sessionStorage.setItem(KEY, company);
   });
-  // A filter on a company that no longer exists would show an empty list.
+  // A filter on a company that no longer exists (deleted since) would show an empty list.
   $effect(() => {
-    if (companies.length && company !== 'all' && !companies.some((c) => String(c.id) === company)) company = 'all';
+    if (loaded && company !== 'all' && !companies.some((c) => String(c.id) === company)) company = 'all';
   });
 </script>
 

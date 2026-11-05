@@ -95,6 +95,10 @@ test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', as
   await expect(page.getByText(/saisies verrouillées/)).toBeVisible();
   await expect(page.getByRole('group', { name: 'Pinceau' })).toHaveCount(0);
   await expect(half(page, 16, 'matin')).toHaveAttribute('aria-disabled', 'true');
+  if (info.project.name === 'desktop') {
+    // The view switch stays available on a locked month.
+    await expect(page.getByRole('group', { name: 'Affichage' })).toBeVisible();
+  }
   await axe(page);
 
   // History lists the month.
@@ -185,8 +189,28 @@ test('cadre au doigt : toucher ouvre le menu, le pinceau écrit', async ({ watch
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(3);
 
+  // A finger drag with the brush paints every half-day it crosses
+  // (pointer events as the browser sends them for a touch).
+  await page.evaluate(() => {
+    const at = (k: string) => {
+      const r = document.querySelector(`[data-k="${k}"]`)!.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    const fire = (type: string, k: string, target: EventTarget) => {
+      const { x, y } = at(k);
+      const el = type === 'pointerup' ? target : document.elementFromPoint(x, y)!;
+      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: y }));
+    };
+    fire('pointerdown', '2026-03-04|AM', window);
+    fire('pointermove', '2026-03-04|PM', window);
+    fire('pointermove', '2026-03-05|PM', window);
+    fire('pointerup', '2026-03-05|PM', window);
+  });
+  await expect(half(page, 5, 'après-midi')).toHaveText('Congé');
+  await expect(half(page, 4, 'après-midi')).toHaveText('Congé');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(7);
   // The undo offer sits above the brush bar and works with a tap.
   await page.getByRole('button', { name: /Annuler/ }).tap();
-  await expect(half(page, 3, 'après-midi')).toHaveText('après-midi');
-  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(2);
+  await expect(half(page, 5, 'après-midi')).toHaveText('après-midi');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(3);
 });

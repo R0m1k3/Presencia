@@ -98,14 +98,14 @@
           {#each ready.slice(0, 3) as c (c.id)}
             <a class="shortcut" href="#/validation/{key}/{c.id}">
               <span class="shortcut-icon"><CircleCheck /></span>
-              <span class="grow"><span class="cell-main">{c.name} est prête à valider</span><br /><span class="cell-sub">Les {c.activeCadres} cadres actifs ont validé leur mois</span></span>
+              <span class="grow"><span class="cell-main">{c.name} est prête à valider</span><br /><span class="cell-sub">{c.activeCadres > 1 ? `Les ${c.activeCadres} cadres actifs ont validé leur mois` : 'Le cadre actif a validé son mois'}</span></span>
               <ChevronRight />
             </a>
           {/each}
           {#each late.slice(0, 3) as c (c.id)}
             <a class="shortcut" href="#/validation/{key}/{c.id}">
               <span class="shortcut-icon"><ListChecks /></span>
-              <span class="grow"><span class="cell-main">{c.name} : {c.activeCadres - c.validatedCadres} cadre{c.activeCadres - c.validatedCadres > 1 ? 's' : ''} en retard</span><br /><span class="cell-sub">{c.validatedCadres}/{c.activeCadres} ont validé leur mois</span></span>
+              <span class="grow"><span class="cell-main">{c.name} : {c.activeCadres - c.validatedCadres} cadre{c.activeCadres - c.validatedCadres > 1 ? 's' : ''} en retard</span><br /><span class="cell-sub">{c.validatedCadres} sur {c.activeCadres} {c.validatedCadres > 1 ? 'ont validé leur' : 'a validé son'} mois</span></span>
               <ChevronRight />
             </a>
           {/each}

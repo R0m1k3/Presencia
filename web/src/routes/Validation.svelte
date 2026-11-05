@@ -12,7 +12,7 @@
   import { ok, error } from '../lib/toast.svelte.ts';
   import { currentYm, formatStamp, lastMonths, monthName, monthTitle, ymKey, type YearMonth } from '../lib/logic/dates.ts';
   import { workHalves } from '../lib/logic/totals.ts';
-  import { filledText, isReady } from '../lib/logic/people.ts';
+  import { filledLabel, filledText, isReady } from '../lib/logic/people.ts';
   import type { Company, CompanyMonth, Overview } from '../lib/types.ts';
 
   let { ym, companyId }: { ym: YearMonth; companyId: number | null } = $props();
@@ -76,15 +76,18 @@
     try {
       // A correction made just before must reach the server first; if it
       // failed, stop (the failure was already shown).
-      if (!(await writes.settled(mark))) return;
+      if (!(await writes.settled(mark))) {
+        error(`${reopen ? 'Réouverture' : 'Validation'} annulée : une correction n’a pas pu être enregistrée. Vérifiez, puis réessayez.`);
+        return;
+      }
       await api(`/validations/company/${companyId}${reopen ? '/reopen' : ''}`, 'POST', { year: ym.year, month: ym.month });
       ok(reopen ? 'Société réouverte' : 'Société validée');
       badge.refresh();
     } catch (e) {
       error(message(e));
     } finally {
-      busy = false;
       await load();
+      busy = false;
     }
   }
 
@@ -99,9 +102,9 @@
     } catch (e) {
       error(message(e));
     } finally {
+      await load();
       reopening = null;
     }
-    await load();
   }
 
   async function exportFile(kind: 'excel' | 'pdf') {
@@ -154,10 +157,10 @@
           {:else if data.cadres.length === 0}
             Aucun cadre actif dans cette société
           {:else}
-            {validatedCount} cadre{validatedCount > 1 ? 's' : ''} sur {data.cadres.length} {validatedCount > 1 ? 'ont' : 'a'} validé leur mois
+            {validatedCount} cadre{validatedCount > 1 ? 's' : ''} sur {data.cadres.length} {validatedCount > 1 ? 'ont validé leur' : 'a validé son'} mois
           {/if}
         </p>
-        <span class="progress"><StackBar filled={validatedCount} total={Math.max(data.cadres.length, 1)} label="{validatedCount} cadre{validatedCount > 1 ? 's' : ''} sur {data.cadres.length} validé{validatedCount > 1 ? 's' : ''}" /></span>
+        {#if data.cadres.length}<span class="progress"><StackBar filled={validatedCount} total={Math.max(data.cadres.length, 1)} label="{validatedCount} cadre{validatedCount > 1 ? 's' : ''} sur {data.cadres.length} validé{validatedCount > 1 ? 's' : ''}" /></span>{/if}
       </div>
       <div class="row">
         <button class="btn" type="button" disabled={exporting !== null} onclick={() => exportFile('excel')}><FileSpreadsheet />Excel</button>
@@ -179,12 +182,12 @@
     {#if data.cadres.length}
       <div class="panel">
         <table class="table cards">
-          <thead><tr><th>Cadre</th><th>Renseigné</th><th>Statut</th><th></th></tr></thead>
+          <thead><tr><th>Cadre</th><th title="Demi-journées saisies, week-ends compris (compte de l’API)">Renseigné</th><th>Statut</th><th></th></tr></thead>
           <tbody>
             {#each data.cadres as c (c.id)}
               <tr>
                 <td><span class="cell-main">{c.fullName}</span><br /><span class="cell-sub">{c.email}</span></td>
-                <td class="fill"><StackBar filled={c.filled} {total} label="{filledText(c.filled, total)} demi-journées renseignées" /><span class="cell-sub">{filledText(c.filled, total)}</span></td>
+                <td class="fill"><StackBar filled={c.filled} {total} label={filledLabel(c.filled, total)} /><span class="cell-sub" aria-hidden="true">{filledText(c.filled, total)}</span></td>
                 <td>
                   <span class="tag" class:done={c.cadreValidated}>
                     {c.cadreValidated ? `Validé${c.cadreValidatedAt ? ` le ${formatStamp(c.cadreValidatedAt).split(' à ')[0]}` : ''}` : 'En saisie'}

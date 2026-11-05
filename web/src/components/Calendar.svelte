@@ -67,13 +67,27 @@
     anchor = null;
   }
 
+  /**
+   * An action of the selection bar (undefined: just cancel). The focus goes
+   * back to the grid, so the digits typed next write there instead of
+   * picking a brush.
+   */
+  function applySelection(status: Status | null | undefined) {
+    if (status !== undefined) onapply(selection, status);
+    clearSelection();
+    root.querySelector<HTMLElement>(`[data-k="${focusKey}"]`)?.focus();
+  }
+
   // ---- pointer: mouse, pen, and touch when a brush is active ----
   let down: { key: HalfKey; type: string; dragged: boolean } | null = null;
 
   function onpointerdown(e: PointerEvent) {
     if (locked || e.button !== 0) return;
     const k = (e.target as HTMLElement).closest<HTMLElement>('[data-k]')?.dataset.k as HalfKey | undefined;
-    if (!k) return;
+    if (!k) {
+      clearSelection(); // a click in the grid but not on a half-day
+      return;
+    }
     menu = null;
     down = { key: k, type: e.pointerType, dragged: false };
     if (e.pointerType === 'touch' && !brush) return; // native scroll; a tap opens the menu
@@ -341,10 +355,10 @@
   <div class="selbar" role="toolbar" aria-label="Appliquer à la sélection">
     <span>{selection.length} demi-journées</span>
     {#each STATUSES as s (s)}
-      <button type="button" onclick={() => { onapply(selection, s); clearSelection(); }}>{LABEL[s]}</button>
+      <button type="button" onclick={() => applySelection(s)}>{LABEL[s]}</button>
     {/each}
-    <button type="button" onclick={() => { onapply(selection, null); clearSelection(); }}>Effacer</button>
-    <button type="button" class="close" aria-label="Annuler la sélection" onclick={clearSelection}><X size={16} /></button>
+    <button type="button" onclick={() => applySelection(null)}>Effacer</button>
+    <button type="button" class="close" aria-label="Annuler la sélection" onclick={() => applySelection(undefined)}><X size={16} /></button>
   </div>
 {/if}
 

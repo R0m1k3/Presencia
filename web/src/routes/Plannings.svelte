@@ -3,7 +3,7 @@
   import MonthNav from '../components/MonthNav.svelte';
   import StackBar from '../components/StackBar.svelte';
   import CompanyFilter, { storedCompany } from '../components/CompanyFilter.svelte';
-  import { filledText, search } from '../lib/logic/people.ts';
+  import { filledLabel, filledText, search } from '../lib/logic/people.ts';
   import { api, message } from '../lib/api.ts';
   import { ymKey, type YearMonth } from '../lib/logic/dates.ts';
   import { workHalves } from '../lib/logic/totals.ts';
@@ -21,7 +21,13 @@
   let partial = $state(false);
   const total = $derived(workHalves(ym));
 
-  api<Company[]>('/companies').then((c) => (companies = c)).catch(() => {});
+  let companiesLoaded = $state(false);
+  api<Company[]>('/companies')
+    .then((c) => {
+      companies = c;
+      companiesLoaded = true;
+    })
+    .catch(() => {});
 
   let req = 0;
   async function load(filter: string) {
@@ -67,7 +73,7 @@
       <MonthNav {ym} href={(m) => `#/plannings/${ymKey(m)}`} />
       <p class="page-sub">Consultez ou corrigez le planning d’un cadre</p>
     </div>
-    <CompanyFilter {companies} bind:company bind:query />
+    <CompanyFilter {companies} loaded={companiesLoaded} bind:company bind:query />
   </header>
 
   {#if err}
@@ -83,7 +89,7 @@
         </p>
       {:else}
         <table class="table cards">
-          <thead><tr><th>Cadre</th><th>Société</th><th>Renseigné</th><th>Statut</th><th></th></tr></thead>
+          <thead><tr><th>Cadre</th><th>Société</th><th title="Demi-journées saisies, week-ends compris (compte de l’API)">Renseigné</th><th>Statut</th><th></th></tr></thead>
           <tbody>
             {#each shown as u (u.id)}
               {@const m = month.get(u.id)}
@@ -94,8 +100,8 @@
                   {#if u.company_id === null}
                     <span class="cell-sub">Sans société</span>
                   {:else if m}
-                    <StackBar filled={m.filled} {total} label="{filledText(m.filled, total)} demi-journées renseignées" />
-                    <span class="cell-sub">{filledText(m.filled, total)}</span>
+                    <StackBar filled={m.filled} {total} label={filledLabel(m.filled, total)} />
+                    <span class="cell-sub" aria-hidden="true">{filledText(m.filled, total)}</span>
                   {:else}
                     <span class="cell-sub">—</span>
                   {/if}

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import { api, message } from '../lib/api.ts';
   import { session } from '../lib/session.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -26,13 +25,10 @@
       go(back && back !== '/connexion' ? back : '/', true);
     } catch (e) {
       err = message(e);
-      // Plan §4: the password stays, selected, so a typo is retyped in one
-      // go. The input is disabled while busy: enable it before selecting.
-      busy = false;
-      await tick();
+      // Plan §4: the password stays, selected, so a typo is retyped in one go.
       pwdInput?.select();
     } finally {
-      busy = false; // also after a successful sign-in
+      busy = false;
     }
   }
 </script>

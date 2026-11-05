@@ -16,7 +16,7 @@ export class PlanningStore implements QueueOwner {
   data = $state<Planning | null>(null);
   map = $state.raw<Map<HalfKey, Status>>(new Map());
   loadError = $state<string | null>(null);
-  /** A write failed and the reload did not succeed yet: the screen may show unsaved entries. */
+  /** A write failed or a reload did not work: the screen may not match the server. */
   stale = $state(false);
   #undo: Undo | null = null;
   #req = 0;
@@ -33,7 +33,7 @@ export class PlanningStore implements QueueOwner {
     return this.userId === null ? {} : { user_id: this.userId };
   }
 
-  async load() {
+  async load(): Promise<void> {
     const req = ++this.#req;
     // Writes still queued (this screen's or a previous one's) go first, so
     // the answer includes them.
@@ -46,13 +46,17 @@ export class PlanningStore implements QueueOwner {
       // A later load (or a month change) wins over a late answer.
       if (req !== this.#req) return;
       // Edited while the request was out: the answer misses those writes.
-      if (edits !== this.#edits) return void this.load();
+      if (edits !== this.#edits) return this.load();
       this.data = data;
       this.map = toMap(data.entries);
       this.loadError = null;
       this.stale = false;
     } catch (e) {
-      if (req === this.#req) this.loadError = message(e);
+      if (req !== this.#req) return;
+      this.loadError = message(e);
+      // What is on screen may be out of date (unsaved entries, an old lock
+      // state): read-only until a reload works.
+      if (this.data) this.stale = true;
     }
   }
 

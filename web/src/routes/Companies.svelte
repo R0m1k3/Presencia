@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { forgetCompany } from '../components/CompanyFilter.svelte';
   import { badge } from '../lib/badge.svelte.ts';
   import Plus from '@lucide/svelte/icons/plus';
   import Dialog from '../components/Dialog.svelte';
@@ -57,7 +56,7 @@
   async function remove(c: Company) {
     const n = Number(c.active_cadre_count);
     const who = n
-      ? `Les ${n} cadre${n > 1 ? 's actifs' : ' actif'} rattaché${n > 1 ? 's' : ''} à ${c.name}, et les inactifs s’il y en a, n’auront plus de société.`
+      ? `${n > 1 ? `Les ${n} cadres actifs rattachés` : 'Le cadre actif rattaché'} à ${c.name}, et les inactifs s’il y en a, n’${n > 1 ? 'auront' : 'aura'} plus de société.`
       : `Les cadres inactifs rattachés à ${c.name}, s’il y en a, n’auront plus de société.`;
     const text = `${who} Ses validations mensuelles seront supprimées ; les saisies des cadres sont conservées.`;
     if (!(await confirm(`Supprimer ${c.name}`, text, 'Supprimer', true))) return;
@@ -65,14 +64,14 @@
     try {
       await api(`/companies/${c.id}`, 'DELETE');
       ok('Société supprimée');
-      forgetCompany(c.id);
       badge.refresh();
     } catch (e) {
       error(message(e));
     } finally {
+      // Re-enabled only once the list no longer shows a deleted company.
+      await load();
       removing = null;
     }
-    await load();
   }
 </script>
 
