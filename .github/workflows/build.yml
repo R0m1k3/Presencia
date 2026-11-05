@@ -1,4 +1,4 @@
-name: Backend
+name: Build
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
 # A newer push on the same branch cancels the run in progress (never on main,
 # so that every merge publishes its image).
 concurrency:
-  group: backend-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -62,24 +62,29 @@ jobs:
       - name: Build
         uses: docker/build-push-action@v6
         with:
-          context: server
+          context: .
           load: true
-          tags: presencia-backend:ci
+          tags: presencia:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test (container + database, /api/health)
+      - name: Smoke test (container + database, API and UI)
         run: |
           docker network create smoke
           docker run -d --name db --network smoke -e POSTGRES_USER=presencia \
             -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=presencia postgres:16-alpine
-          docker run -d --name api --network smoke -p 4790:4790 -e PGHOST=db \
-            -e PGPASSWORD=smoke -e ADMIN_PASSWORD=smoke-password presencia-backend:ci
+          docker run -d --name api --network smoke -p 8080:80 -e PGHOST=db \
+            -e PGPASSWORD=smoke -e ADMIN_PASSWORD=smoke-password presencia:ci
           for i in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:4790/api/health && break
+            curl -fsS http://127.0.0.1:8080/api/health && break
             sleep 2
           done
-          curl -fsS http://127.0.0.1:4790/api/health
+          curl -fsS http://127.0.0.1:8080/api/health
           docker exec api /app/presencia healthcheck
+          # The real UI, not build.rs's placeholder, with its headers.
+          curl -fsS -D headers.txt http://127.0.0.1:8080/ -o index.html
+          grep -qi '^content-security-policy:' headers.txt
+          ! grep -q 'interface non construite' index.html
+          curl -fsS -o /dev/null http://127.0.0.1:8080/js/app.js
       - name: Container logs
         if: always()
         run: docker logs api || true
@@ -88,7 +93,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/r0m1k3/presencia-backend
+          images: ghcr.io/r0m1k3/presencia
           tags: |
             type=raw,value=latest
             type=sha,prefix=sha-,format=short
@@ -102,7 +107,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v6
         with:
-          context: server
+          context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           # org.opencontainers.image.source links the package to this repository.

@@ -3,6 +3,7 @@ name = "presencia"
 version = "2.0.0"
 edition = "2024"
 publish = false
+build = "build.rs"
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
@@ -25,6 +26,8 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-graceful", "http1"] }
 tower = { version = "0.5", features = ["util"] }
+# The web UI (../web/dist) is compiled into the binary: one artefact, no volume.
+rust-embed = "8"
 
 [dev-dependencies]
 http-body-util = "0.1"

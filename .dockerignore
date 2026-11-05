@@ -1,0 +1,10 @@
+# Never in the build context: secrets, history, local builds.
+.env
+.git
+.github
+**/node_modules
+web/dist
+server/target
+tools
+*.md
+server/tests

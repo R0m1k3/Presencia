@@ -21,58 +21,43 @@ services:
       timeout: 5s
       retries: 10
 
-  presencia-backend:
-    # Image built and published by GitHub Actions (.github/workflows/backend.yml),
-    # pulled rather than compiled here. To build it on this host instead:
-    # docker build -t ghcr.io/r0m1k3/presencia-backend:latest server
-    image: ghcr.io/r0m1k3/presencia-backend:${PRESENCIA_TAG:-latest}
+  # One container: the Rust binary serves the API and the web UI. It keeps the
+  # old frontend's name and port 80 so the host's reverse proxy, which targets
+  # presencia-frontend:80, needs no change.
+  presencia-frontend:
+    image: ghcr.io/r0m1k3/presencia:${PRESENCIA_TAG:-latest}
     restart: unless-stopped
     depends_on:
       presencia-db:
         condition: service_healthy
     environment:
-      PORT: 4790
+      PORT: 80
       PGHOST: presencia-db
       PGPORT: 5432
       PGUSER: presencia
       PGPASSWORD: ${POSTGRES_PASSWORD:?Définissez POSTGRES_PASSWORD dans .env}
       PGDATABASE: presencia
-      # Leave empty to let the API generate a random secret, stored in the
-      # database. If set, it must be at least 32 random characters.
       JWT_SECRET: ${JWT_SECRET:-}
-      # Secure cookies by default; set COOKIE_SECURE=false in .env only if the
-      # application is served over plain HTTP.
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      # Only used on the very first start, to create the admin account.
-      # Without ADMIN_PASSWORD a random password is printed once in the logs.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
+    # Port 80 as the unprivileged user (Docker's default, made explicit).
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     healthcheck:
-      # The image has no shell nor curl: the binary checks /api/health itself.
       test: ["CMD", "/app/presencia", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
     ports:
-      # The browser goes through the frontend; direct API access stays local.
-      - "127.0.0.1:4790:4790"
+      - "8781:80"
     networks:
       - presencia_private
       - nginx
 
-  presencia-frontend:
-    build: ./frontend
-    restart: unless-stopped
-    depends_on:
-      - presencia-backend
-    ports:
-      - "8781:80"
-    networks:
-      - nginx
-
 networks:
-  # Shared with the host's reverse proxy: only the API and the frontend join it.
+  # Shared with the host's reverse proxy: only the application joins it.
   nginx:
     name: nginx_default
     external: true
