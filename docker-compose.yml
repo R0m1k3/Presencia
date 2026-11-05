@@ -22,7 +22,10 @@ services:
       retries: 10
 
   presencia-backend:
-    build: ./backend
+    # Image built and published by GitHub Actions (.github/workflows/backend.yml),
+    # pulled rather than compiled here. To build it on this host instead:
+    # docker build -t ghcr.io/r0m1k3/presencia-backend:latest server
+    image: ghcr.io/r0m1k3/presencia-backend:${PRESENCIA_TAG:-latest}
     restart: unless-stopped
     depends_on:
       presencia-db:
@@ -45,6 +48,12 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
+    healthcheck:
+      # The image has no shell nor curl: the binary checks /api/health itself.
+      test: ["CMD", "/app/presencia", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     ports:
       # The browser goes through the frontend; direct API access stays local.
       - "127.0.0.1:4790:4790"

@@ -15,7 +15,7 @@ Application de gestion des présences par demi-journée, multi-sociétés, avec 
 - **Export** PDF et Excel par société et par mois (détail par cadre, jour et demi-journée).
 - **Interface mobile** : sous 900 px, le calendrier devient une liste verticale, la navigation passe en barre basse et les cibles tactiles font 44 px.
 - **Aucune dépendance externe au chargement** : la police (Inter) et les icônes (Phosphor) sont servies par l'application elle-même — aucune requête vers un CDN ou vers Google Fonts.
-- **Docker** : Postgres + API Node/Express + frontend Nginx, sur des ports non standards.
+- **Docker** : Postgres + API Rust (axum) + frontend Nginx, sur des ports non standards. L'image de l'API est construite par GitHub Actions et publiée sur GHCR.
 
 ## Démarrage
 
@@ -23,8 +23,40 @@ Les secrets (mot de passe base de données, identifiants admin…) ne sont pas d
 
 ```bash
 cp .env.example .env   # puis renseignez au minimum POSTGRES_PASSWORD
+docker compose pull    # image de l'API publiée sur ghcr.io
 docker compose up -d --build
 ```
+
+Mise à jour : `git pull && docker compose pull && docker compose up -d --build`
+(`--build` ne concerne que le frontend ; l'API n'est jamais compilée sur le serveur). L'image
+`ghcr.io/r0m1k3/presencia-backend` est publiée à chaque push sur `main`, avec
+les étiquettes `latest` et `sha-<7 caractères>` ; `PRESENCIA_TAG` dans `.env`
+permet d'en fixer une (retour arrière). Le paquet GHCR doit être public, sinon
+faites d'abord `docker login ghcr.io`. Pour compiler l'image sur place :
+`docker build -t ghcr.io/r0m1k3/presencia-backend:latest server`.
+
+Le réseau Docker `nginx_default` (celui du reverse proxy de l'hôte) doit exister
+avant le premier `up` : `docker network create nginx_default` s'il n'y en a pas.
+
+### Passage de l'API Node à l'API Rust, et retour arrière
+
+L'API Rust reprend la base existante telle quelle (même schéma, mêmes hachages
+bcrypt, mêmes cookies de session) : aucune migration de données.
+
+1. Sauvegarde : `docker compose exec presencia-db pg_dump -U presencia presencia > presencia.sql`.
+2. Si les anciens mots de passe (Postgres, admin) ou le `JWT_SECRET` ont figuré
+   dans l'historique public du dépôt, changez-les : `POSTGRES_PASSWORD` et
+   `JWT_SECRET` dans `.env` (puis `ALTER USER presencia PASSWORD '…'` dans la
+   base ; un nouveau `JWT_SECRET` déconnecte tout le monde). Le mot de passe
+   admin se change dans l'interface (« Mon mot de passe ») : `ADMIN_PASSWORD`
+   n'est lu que tant qu'aucun admin n'existe.
+3. `git pull && docker compose pull && docker compose up -d --build`.
+   L'image n'est publiée qu'après la fusion dans `main` (étiquettes `latest`
+   et `sha-…`) ; pour essayer avant, compilez-la sur place (commande ci-dessus).
+   Elle est construite pour linux/amd64 uniquement.
+
+Retour à l'ancienne API Node : `git checkout f760cf6 && docker compose up -d --build`
+(elle se compile sur place et relit la même base).
 
 Ports par défaut (modifiables directement dans `docker-compose.yml`) :
 
@@ -45,7 +77,7 @@ d'exemple ou trop courte est ignorée.
 
 Ouvrir http://localhost:8781
 
-Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (e-mail par défaut `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-backend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
+Un compte administrateur est créé automatiquement au premier démarrage avec les identifiants définis par `ADMIN_EMAIL` / `ADMIN_PASSWORD` dans `.env` (sans `ADMIN_EMAIL` : `admin@presencia.local`). Sans `ADMIN_PASSWORD`, un mot de passe aléatoire est généré et affiché une seule fois dans les logs (`docker compose logs presencia-backend`). **Changez ce mot de passe après la première connexion** via « Mon mot de passe » (en bas de la barre latérale, ou l'icône cadenas sur mobile). Chaque utilisateur peut changer le sien ; un administrateur peut aussi réinitialiser celui de n'importe quel compte depuis l'onglet Utilisateurs.
 
 Si vous changez les identifiants admin dans `.env` *après* un premier démarrage, ils n'auront aucun effet : le compte admin n'est créé qu'une seule fois (au premier démarrage, base vide). Pour le modifier ensuite, utilisez l'écran Utilisateurs une fois connecté, ou réinitialisez le volume `presencia_pgdata`.
 
@@ -93,7 +125,11 @@ Réseaux : seuls l'API et le frontend rejoignent le réseau partagé `nginx_defa
 ## Architecture technique
 
 ```
-backend/    API Node.js / Express, PostgreSQL (pg), auth par cookie JWT httpOnly
+server/     API Rust (axum, sqlx), PostgreSQL, auth par cookie JWT httpOnly
+  src/routes/   une route par fichier, routage reproduisant celui d'Express
+  src/export/   Excel (rust_xlsxwriter) et PDF (Helvetica, sans dépendance)
+  migrations/   schéma, appliqué au démarrage
+  tests/        tests d'intégration (une base PostgreSQL jetable par fichier)
 frontend/   Page HTML unique (vanilla JS), servie par Nginx qui proxifie /api vers le backend
   public/css/styles.css     tokens et composants du design system (Nocturne)
   public/css/presencia.css  couche applicative du design (calendrier, navigation, statuts)
@@ -102,6 +138,17 @@ frontend/   Page HTML unique (vanilla JS), servie par Nginx qui proxifie /api ve
   public/css/phosphor.css   sous-ensemble des 18 icônes utilisées, servi localement
 docker-compose.yml
 ```
+
+L'API Rust remplace une API Node/Express (commit `f760cf6`) sans changer le
+frontend : elle reproduit exactement ses réponses (codes, messages, ordre des
+clés JSON, routage insensible à la casse, contrôles de session avant le 404).
+`tools/parity/` rejoue 156 requêtes sur les deux versions et compare les
+réponses. Les imitations d'Express qui ne servent qu'à cette parité pourront
+disparaître avec le nouveau frontend.
+
+`migrations/` n'est pas un migrateur : les deux fichiers sont inclus dans le
+binaire et appliqués au démarrage (`001` sur une base vide, `002` toujours,
+idempotent). Un nouveau fichier doit être ajouté dans `src/bootstrap.rs`.
 
 `styles.css` et `presencia.css` proviennent du projet Claude Design et sont à
 remplacer tels quels lors d'une nouvelle exportation du design ; les
@@ -125,10 +172,20 @@ Règles de verrouillage :
 
 ## Développement local (sans Docker)
 
+Prérequis : Rust stable (`rustup`) et un PostgreSQL 16 local.
+
 ```bash
-cd backend && npm install
-# variables d'env : voir backend/.env.example (pointer PGHOST vers un Postgres local)
-npm start
+cd server
+export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=presencia PGPASSWORD=presencia PGDATABASE=presencia
+export COOKIE_SECURE=false ADMIN_PASSWORD=un-mot-de-passe
+cargo run --release
+```
+
+Tests : ils créent et suppriment leurs propres bases (`presencia_t_*`) avec un
+rôle qui a le droit `CREATEDB`, lu dans les mêmes variables `PG*` :
+
+```bash
+cargo test -- --test-threads=1
 ```
 
 Le frontend est un simple dossier de fichiers statiques (`frontend/public`) ; en développement, servez-le avec n'importe quel serveur statique qui proxifie `/api` vers `http://localhost:4790` (voir `frontend/nginx.conf` pour la configuration de référence).
