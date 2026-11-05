@@ -23,6 +23,15 @@ fn proxy_addr_rules() {
         client_ip(&peer("172.18.0.3:1"), Some("198.51.100.7, 172.18.0.1")),
         "198.51.100.7"
     );
+    // What the server keeps when the host proxy forwards the client's own
+    // X-Forwarded-For untouched: the client picks its limiter key. Hence the
+    // README rule: the host proxy overwrites it with $remote_addr.
+    assert_eq!(client_ip(&peer("172.18.0.3:1"), Some("203.0.113.50")), "203.0.113.50");
+    // A forged private hop before the real client changes nothing.
+    assert_eq!(
+        client_ip(&peer("172.18.0.3:1"), Some("10.0.0.5, 198.51.100.7")),
+        "198.51.100.7"
+    );
     // A spoofed left-most hop does not win over the first untrusted one.
     assert_eq!(
         client_ip(&peer("172.18.0.3:1"), Some("1.1.1.1, 198.51.100.7")),
@@ -55,6 +64,7 @@ async fn limiter_uses_client_ip() {
     assert_eq!(fail_login(&t, "172.18.0.3:1", Some("198.51.100.7")).await, 429);
     // Same proxy, other client: allowed.
     assert_eq!(fail_login(&t, "172.18.0.3:1", Some("198.51.100.8")).await, 401);
-    // A direct client cannot borrow the blocked address through the header.
-    assert_eq!(fail_login(&t, "198.51.100.9:1", Some("198.51.100.8")).await, 401);
+    // A direct client claiming the blocked address is not blocked: its
+    // header is ignored.
+    assert_eq!(fail_login(&t, "198.51.100.9:1", Some("198.51.100.7")).await, 401);
 }

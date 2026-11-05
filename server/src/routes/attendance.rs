@@ -236,8 +236,10 @@ pub async fn delete_month(c: &Ctx) -> ApiResult {
     ok_json(&json!({ "ok": true }))
 }
 
-/// Bulk upsert; every month in the payload passes the same lock checks.
-pub async fn bulk(c: &Ctx) -> ApiResult {
+/// The `entries` of a bulk request (1 to 200, each with a valid date and
+/// period, and a valid status when `with_status`), its target user, and the
+/// check that every month it touches is writable.
+async fn bulk_entries(c: &Ctx, with_status: bool) -> Result<(&Vec<Value>, Target), ApiError> {
     let entries = match c.b("entries") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 200 => a,
         _ => return fail(400, "Paramètres invalides"),
@@ -246,7 +248,7 @@ pub async fn bulk(c: &Ctx) -> ApiResult {
         crate::validate::truthy(Some(e))
             && is_date(field(e, "date"))
             && one_of(field(e, "period"), &PERIODS)
-            && one_of(field(e, "status"), &STATUSES)
+            && (!with_status || one_of(field(e, "status"), &STATUSES))
     };
     if !entries.iter().all(valid) {
         return fail(400, "Paramètres invalides");
@@ -263,6 +265,12 @@ pub async fn bulk(c: &Ctx) -> ApiResult {
     for ym in months {
         ensure_writable(c, t, ym).await?;
     }
+    Ok((entries, t))
+}
+
+/// Bulk upsert; every month in the payload passes the same lock checks.
+pub async fn bulk(c: &Ctx) -> ApiResult {
+    let (entries, t) = bulk_entries(c, true).await?;
 
     // A half-day listed twice would make ON CONFLICT hit the same row twice:
     // the last one wins.
@@ -292,6 +300,29 @@ pub async fn bulk(c: &Ctx) -> ApiResult {
     .execute(&c.st.pool)
     .await?;
     ok_json(&json!({ "ok": true, "count": order.len() }))
+}
+
+/// `DELETE /api/attendance/bulk` (no Node counterpart: added with the new
+/// UI, to clear or undo a selection in one statement). `count` is the number
+/// of half-days actually deleted (PUT /bulk counts the distinct half-days
+/// sent).
+pub async fn bulk_delete(c: &Ctx) -> ApiResult {
+    let (entries, t) = bulk_entries(c, false).await?;
+    let (dates, periods): (Vec<String>, Vec<String>) = entries
+        .iter()
+        .map(|e| (str_of(field(e, "date")), str_of(field(e, "period"))))
+        .unzip();
+    let done = sqlx::query(
+        "DELETE FROM attendance_entries a
+         USING unnest($2::date[], $3::text[]) AS t(d, p)
+         WHERE a.user_id = $1 AND a.entry_date = t.d AND a.period = t.p::half_day_period",
+    )
+    .bind(t.id)
+    .bind(dates)
+    .bind(periods)
+    .execute(&c.st.pool)
+    .await?;
+    ok_json(&json!({ "ok": true, "count": done.rows_affected() }))
 }
 
 pub async fn delete(c: &Ctx) -> ApiResult {

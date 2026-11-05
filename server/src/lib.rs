@@ -16,6 +16,7 @@ pub mod limiter;
 pub mod routes;
 pub mod status;
 pub mod validate;
+pub mod web;
 
 use std::{
     net::SocketAddr,
@@ -86,31 +87,53 @@ pub fn app(state: AppState) -> Router {
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
 
 async fn handle(State(st): State<AppState>, ConnectInfo(peer): ConnectInfo<SocketAddr>, req: Request) -> Response {
-    // Its own task, so that a panic becomes a 500 instead of a dropped
-    // connection; like a Node handler, it finishes even if the client leaves.
-    let task = tokio::spawn(async move { routes::dispatch(&st, peer, req).await });
-    let abort = task.abort_handle();
-    let mut res = match tokio::time::timeout(REQUEST_TIMEOUT, task).await {
-        Ok(Ok(res)) => res,
-        Ok(Err(e)) => error::ApiError::Internal(format!("panic: {e}")).into_response(),
-        Err(_) => {
-            abort.abort();
-            let mut res = StatusCode::REQUEST_TIMEOUT.into_response();
-            res.headers_mut()
-                .insert(header::CONNECTION, HeaderValue::from_static("close"));
-            res
-        }
+    // The UI first, for every path outside the /api mount (matched the way
+    // the router matches it: case-insensitive, optional trailing slash).
+    let ui = match routes::strip_mount(req.uri().path(), "/api") {
+        Some(_) => None,
+        None => web::serve(req.method(), req.uri().path(), req.headers()),
     };
-    // The API is also reachable on its own port, without the nginx headers.
-    let h = res.headers_mut();
+    let mut res = match ui {
+        Some(res) => res,
+        None => api(st, peer, req).await,
+    };
     // Defaults only: a handler that sets one of these keeps its own value.
+    let h = res.headers_mut();
     for (name, value) in [
         (HeaderName::from_static("x-content-type-options"), "nosniff"),
         (HeaderName::from_static("x-frame-options"), "DENY"),
         (HeaderName::from_static("referrer-policy"), "same-origin"),
+        (HeaderName::from_static("content-security-policy"), CSP),
+        (
+            HeaderName::from_static("permissions-policy"),
+            "camera=(), microphone=(), geolocation=()",
+        ),
         (header::CACHE_CONTROL, "no-store"),
     ] {
         h.entry(name).or_insert(HeaderValue::from_static(value));
     }
     res
+}
+
+/// The policy the old nginx frontend sent (its security-headers.conf).
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+                   img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; \
+                   base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
+
+/// The router, in its own task so that a panic becomes a 500 instead of a
+/// dropped connection. Like a Node handler, it finishes even if the client
+/// leaves, but never runs longer than REQUEST_TIMEOUT.
+async fn api(st: AppState, peer: SocketAddr, req: Request) -> Response {
+    let task =
+        tokio::spawn(async move { tokio::time::timeout(REQUEST_TIMEOUT, routes::dispatch(&st, peer, req)).await });
+    match task.await {
+        Ok(Ok(res)) => res,
+        Ok(Err(_elapsed)) => {
+            let mut res = StatusCode::REQUEST_TIMEOUT.into_response();
+            res.headers_mut()
+                .insert(header::CONNECTION, HeaderValue::from_static("close"));
+            res
+        }
+        Err(e) => error::ApiError::Internal(format!("panic: {e}")).into_response(),
+    }
 }

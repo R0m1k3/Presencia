@@ -108,6 +108,7 @@ enum R {
     AttHistory,
     AttDeleteMonth,
     AttBulk,
+    AttBulkDelete,
     AttDelete,
     ValCadre,
     ValCadreReopen,
@@ -201,6 +202,7 @@ static MOUNTS: &[Mount] = &[
             rt(M::Get, &[Lit("history")], R::AttHistory),
             rt(M::Delete, &[Lit("month")], R::AttDeleteMonth),
             rt(M::Put, &[Lit("bulk")], R::AttBulk),
+            rt(M::Delete, &[Lit("bulk")], R::AttBulkDelete),
             rt(M::Delete, &[], R::AttDelete),
         ],
     },
@@ -232,7 +234,7 @@ fn starts_with_ci(path: &str, prefix: &str) -> bool {
 
 /// `app.use(prefix, router)`: regex `^prefix\/?(?=\/|$)`, case-insensitive.
 /// Returns the path seen by the router (always starting with `/`).
-fn strip_mount<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+pub(crate) fn strip_mount<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
     if !starts_with_ci(path, prefix) {
         return None;
     }
@@ -539,6 +541,7 @@ async fn run(r: R, c: &Ctx) -> ApiResult {
         R::AttHistory => attendance::history(c).await,
         R::AttDeleteMonth => attendance::delete_month(c).await,
         R::AttBulk => attendance::bulk(c).await,
+        R::AttBulkDelete => attendance::bulk_delete(c).await,
         R::AttDelete => attendance::delete(c).await,
         R::ValCadre => validations::cadre(c).await,
         R::ValCadreReopen => validations::cadre_reopen(c).await,

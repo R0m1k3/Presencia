@@ -163,6 +163,76 @@ async fn planning_and_locks() {
         );
     }
 
+    // Bulk delete: only the listed half-days, absent ones count for nothing.
+    let r = t
+        .call(
+            "PUT",
+            "/api/attendance/bulk",
+            Some(json!({ "entries": [
+                { "date": "2026-03-05", "period": "AM", "status": "conge" },
+                { "date": "2026-03-05", "period": "PM", "status": "conge" },
+                { "date": "2026-03-06", "period": "AM", "status": "rtt" },
+            ] })),
+            Some(&cadre),
+        )
+        .await;
+    assert_eq!(r.json()["count"], 3);
+    let r = t
+        .call(
+            "DELETE",
+            "/api/attendance/bulk",
+            Some(json!({ "entries": [
+                { "date": "2026-03-05", "period": "AM" },
+                { "date": "2026-03-05", "period": "PM" },
+                { "date": "2026-03-09", "period": "AM" },
+            ] })),
+            Some(&cadre),
+        )
+        .await;
+    assert_eq!(r.json(), json!({ "ok": true, "count": 2 }));
+    let r = t
+        .call("GET", "/api/attendance?year=2026&month=3", None, Some(&cadre))
+        .await;
+    let left: Vec<_> = r.json()["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["date"].as_str().unwrap().to_string())
+        .collect();
+    assert!(!left.contains(&"2026-03-05".to_string()));
+    assert!(left.contains(&"2026-03-06".to_string()));
+    let one = json!({ "entries": [{ "date": "2026-03-06", "period": "AM" }] });
+    let r = t
+        .call("DELETE", "/api/attendance/bulk", Some(one.clone()), Some(&cadre))
+        .await;
+    assert_eq!(r.json(), json!({ "ok": true, "count": 1 }));
+    // Same user_id rule as the other writes.
+    let mut other = one.clone();
+    other["user_id"] = json!(uid);
+    let r = t
+        .call("DELETE", "/api/attendance/bulk", Some(other.clone()), Some(&cadre))
+        .await;
+    assert_eq!((r.status.as_u16(), r.error().as_str()), (403, "Accès refusé"));
+    // An admin clears a cadre's half-day.
+    put(
+        cadre.clone(),
+        json!({ "date": "2026-03-06", "period": "AM", "status": "rtt" }),
+    )
+    .await;
+    let r = t
+        .call("DELETE", "/api/attendance/bulk", Some(other), Some(&admin))
+        .await;
+    assert_eq!(r.json(), json!({ "ok": true, "count": 1 }));
+    for bad in [
+        json!({ "entries": [] }),
+        json!({ "entries": [{ "date": "2026-03-06" }] }),
+        json!({ "entries": [{ "date": "2026-02-30", "period": "AM" }] }),
+        json!({ "entries": vec![json!({ "date": "2026-03-06", "period": "AM" }); 201] }),
+    ] {
+        let r = t.call("DELETE", "/api/attendance/bulk", Some(bad), Some(&cadre)).await;
+        assert_eq!((r.status.as_u16(), r.error().as_str()), (400, "Paramètres invalides"));
+    }
+
     let r = t
         .call(
             "DELETE",
@@ -254,6 +324,15 @@ async fn planning_and_locks() {
             "DELETE",
             "/api/attendance/month",
             Some(json!({ "year": 2026, "month": 3, "user_id": uid })),
+            Some(&admin),
+        )
+        .await;
+    assert_eq!(r.status, 423);
+    let r = t
+        .call(
+            "DELETE",
+            "/api/attendance/bulk",
+            Some(json!({ "entries": [{ "date": "2026-03-05", "period": "AM" }], "user_id": uid })),
             Some(&admin),
         )
         .await;
