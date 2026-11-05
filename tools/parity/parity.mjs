@@ -69,6 +69,8 @@ function scenario() {
   s(null, 'GET', '/nope');
   s(null, 'GET', '/api/auth/login');
   s(null, 'OPTIONS', '/api/auth/login');
+  s(null, 'OPTIONS', '/api/health');
+  s(null, 'OPTIONS', '/api/auth/me');
   s(null, 'POST', '/api/companies', '{', { raw: true });
   s(null, 'POST', '/api/auth/login', '"x"', { raw: true });
   s(null, 'POST', '/api/auth/login', '{}', { raw: true, ct: 'application/json; charset=latin1' });

@@ -1275,6 +1275,7 @@ dependencies = [
  "base64",
  "bcrypt",
  "chrono",
+ "hashlink",
  "http-body-util",
  "jsonwebtoken",
  "lopdf",

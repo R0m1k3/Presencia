@@ -69,10 +69,11 @@ pub async fn load(pool: &PgPool, company_id: i32, year: i32, month: i32) -> Resu
             entries: HashMap::new(),
         })
         .collect();
+    let index: HashMap<i32, usize> = cadres.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
     for (user_id, date, period, status) in entries {
         // A cadre (re)activated between the two queries is simply left out.
-        if let Some(c) = cadres.iter_mut().find(|c| c.id == user_id) {
-            c.entries.insert((date, period), status);
+        if let Some(&i) = index.get(&user_id) {
+            cadres[i].entries.insert((date, period), status);
         }
     }
     Ok(Some(CompanyMonth {

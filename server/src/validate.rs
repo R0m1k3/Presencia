@@ -101,19 +101,27 @@ pub fn is_id(v: Option<&Value>) -> bool {
     }
 }
 
-/// Postgres' view of a value that passed `isId(String(v))` and is then sent
-/// as a query parameter by `pg`: numbers and strings are integers, an array
-/// becomes the literal `{...}`, which Postgres rejects (22P02).
-pub enum IdParam {
-    Id(i32),
-    Invalid,
+/// An id the Node API checked with `isId(String(v))` and then sent to `pg`:
+/// `None` when the check fails; `Some(Err(()))` when it passes but `pg` would
+/// send a value Postgres rejects (an array becomes the literal `{...}`, 22P02).
+pub fn js_id(v: Option<&Value>) -> Option<Result<i32, ()>> {
+    if !is_id_str(&js_string(v)) {
+        return None;
+    }
+    Some(match v {
+        Some(Value::Number(n)) => Ok(n.as_f64().unwrap_or(0.0) as i32),
+        Some(Value::String(s)) => s.parse().map_err(|_| ()),
+        _ => Err(()),
+    })
 }
 
-pub fn id_param(v: Option<&Value>) -> IdParam {
-    match v {
-        Some(Value::Number(n)) => IdParam::Id(n.as_f64().unwrap_or(0.0) as i32),
-        Some(Value::String(s)) => s.parse().map(IdParam::Id).unwrap_or(IdParam::Invalid),
-        _ => IdParam::Invalid,
+/// `js_id` as a request check: `invalid` (400) when the check fails,
+/// « Valeur invalide » (400) for what Postgres would reject.
+pub fn checked_id(v: Option<&Value>, invalid: &str) -> Result<i32, crate::error::ApiError> {
+    match js_id(v) {
+        None => crate::error::fail(400, invalid),
+        Some(Err(())) => crate::error::fail(400, "Valeur invalide"),
+        Some(Ok(id)) => Ok(id),
     }
 }
 

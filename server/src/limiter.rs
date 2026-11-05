@@ -2,8 +2,9 @@
 //! per (IP, email), guessing one account's password; per IP, all emails
 //! together, trying a few passwords on many accounts.
 
-use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
+
+use hashlink::LinkedHashMap;
 
 pub const WINDOW: Duration = Duration::from_secs(15 * 60);
 pub const MAX_PER_ACCOUNT: u32 = 10;
@@ -14,16 +15,13 @@ pub const MAX_KEYS: usize = 50_000;
 struct Failures {
     count: u32,
     since: Instant,
-    /// Insertion number, to recognise the entry in `order`.
-    seq: u64,
 }
 
+/// Keys in insertion order, like the JS `Map` of the Node version: the first
+/// key is the oldest window, evicted when the map is full.
 #[derive(Default)]
 pub struct Limiter {
-    map: HashMap<String, Failures>,
-    /// Keys in insertion order (like a JS Map), with their insertion number.
-    order: VecDeque<(String, u64)>,
-    seq: u64,
+    map: LinkedHashMap<String, Failures>,
 }
 
 fn keys(ip: &str, email: &str) -> [(String, u32); 2] {
@@ -62,32 +60,9 @@ impl Limiter {
                 continue;
             }
             if self.map.len() >= MAX_KEYS {
-                self.evict_oldest();
+                self.map.pop_front();
             }
-            self.seq += 1;
-            self.order.push_back((key.clone(), self.seq));
-            self.map.insert(
-                key,
-                Failures {
-                    count: 1,
-                    since: now,
-                    seq: self.seq,
-                },
-            );
-        }
-        // Drop queue entries whose key is gone or was re-inserted later.
-        if self.order.len() > 2 * MAX_KEYS {
-            let map = &self.map;
-            self.order.retain(|(k, s)| map.get(k).is_some_and(|f| f.seq == *s));
-        }
-    }
-
-    fn evict_oldest(&mut self) {
-        while let Some((key, seq)) = self.order.pop_front() {
-            if self.map.get(&key).is_some_and(|f| f.seq == seq) {
-                self.map.remove(&key);
-                return;
-            }
+            self.map.insert(key, Failures { count: 1, since: now });
         }
     }
 

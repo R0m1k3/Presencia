@@ -33,7 +33,10 @@ fn file(bytes: Vec<u8>, content_type: &'static str, disposition: String) -> Resp
 
 pub async fn excel(c: &Ctx) -> ApiResult {
     let d = load(c).await?;
-    let bytes = export::xlsx::build(&d).map_err(|e| ApiError::Internal(e.to_string()))?;
+    let (bytes, d) = tokio::task::spawn_blocking(move || (export::xlsx::build(&d), d))
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let bytes = bytes.map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(file(
         bytes,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -43,8 +46,11 @@ pub async fn excel(c: &Ctx) -> ApiResult {
 
 pub async fn pdf(c: &Ctx) -> ApiResult {
     let d = load(c).await?;
+    let (bytes, d) = tokio::task::spawn_blocking(move || (export::pdf::build(&d), d))
+        .await
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     Ok(file(
-        export::pdf::build(&d),
+        bytes,
         "application/pdf",
         attachment(&d.company_name, d.year, d.month, "pdf"),
     ))

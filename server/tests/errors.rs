@@ -101,6 +101,8 @@ async fn pipeline_and_routing() {
     // Automatic OPTIONS answer when CORS is off.
     let r = t.call("OPTIONS", "/api/auth/login", None, None).await;
     assert_eq!((r.status.as_u16(), r.header("allow").as_deref()), (200, Some("POST")));
+    // The health route gets no automatic OPTIONS answer: the /api 404 comes first.
+    assert_eq!(t.call("OPTIONS", "/api/health", None, None).await.status, 404);
     let r = t.call("OPTIONS", "/api/attendance/", None, Some(&admin)).await;
     assert_eq!(String::from_utf8_lossy(&r.bytes), "GET,HEAD,PUT,DELETE");
 }

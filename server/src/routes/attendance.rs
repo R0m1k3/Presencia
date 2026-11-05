@@ -6,7 +6,7 @@ use super::Ctx;
 use crate::{
     error::{ApiError, ApiResult, fail, ok_json},
     status::{PERIODS, STATUSES},
-    validate::{IdParam, YearMonth, field, id_param, is_date, is_id_str, js_string, month_start, parse_year_month},
+    validate::{YearMonth, checked_id, field, is_date, month_start, parse_year_month},
 };
 
 /// Whose planning a request acts on.
@@ -29,12 +29,7 @@ async fn resolve_target(c: &Ctx, requested: Option<&Value>) -> Result<Target, Ap
     if !me.is_admin() {
         return fail(403, "Accès refusé");
     }
-    if !is_id_str(&js_string(requested)) {
-        return fail(400, "Utilisateur invalide");
-    }
-    let IdParam::Id(id) = id_param(requested) else {
-        return fail(400, "Valeur invalide");
-    };
+    let id = checked_id(requested, "Utilisateur invalide")?;
     let row: Option<(i32, Option<i32>)> = sqlx::query_as("SELECT id, company_id FROM users WHERE id = $1")
         .bind(id)
         .fetch_optional(&c.st.pool)
@@ -126,7 +121,7 @@ pub async fn get(c: &Ctx) -> ApiResult {
         return fail(400, "year et month requis");
     };
     let t = resolve_target(c, c.q("user_id")).await?;
-    let rows: Vec<(String, String, String)> = sqlx::query_as(
+    let entries = sqlx::query_as::<_, (String, String, String)>(
         "SELECT entry_date::text, period::text, status::text
          FROM attendance_entries
          WHERE user_id = $1
@@ -136,9 +131,9 @@ pub async fn get(c: &Ctx) -> ApiResult {
     )
     .bind(t.id)
     .bind(month_start(ym))
-    .fetch_all(&c.st.pool)
-    .await?;
-    let st = month_state(c, t, ym).await?;
+    .fetch_all(&c.st.pool);
+    // Both queries at once, like the Promise.all of the Node version.
+    let (rows, st) = tokio::try_join!(async { entries.await.map_err(ApiError::from) }, month_state(c, t, ym))?;
     let editable = if c.user().is_admin() {
         !st.company_validated
     } else {

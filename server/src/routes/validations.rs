@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use super::{Ctx, js_date_opt};
 use crate::{
     error::{ApiError, ApiResult, fail, ok_json},
-    validate::{IdParam, YearMonth, id_param, is_id_str, js_string, month_start, parse_year_month, truthy},
+    validate::{YearMonth, checked_id, js_id, month_start, parse_year_month, truthy},
 };
 
 /// `req.body?.year ?? req.query?.year`, same for month.
@@ -23,15 +23,7 @@ pub async fn cadre(c: &Ctx) -> ApiResult {
     let requested = c.b("user_id").filter(|v| me.is_admin() && truthy(Some(v)));
     let target_id = match requested {
         None => me.id,
-        Some(v) => {
-            if !is_id_str(&js_string(Some(v))) {
-                return fail(400, "Utilisateur invalide");
-            }
-            match id_param(Some(v)) {
-                IdParam::Id(id) => id,
-                IdParam::Invalid => return fail(400, "Valeur invalide"),
-            }
-        }
+        Some(v) => checked_id(Some(v), "Utilisateur invalide")?,
     };
     let target: Option<(i32, Option<i32>)> = sqlx::query_as("SELECT id, company_id FROM users WHERE id = $1")
         .bind(target_id)
@@ -68,15 +60,10 @@ pub async fn cadre(c: &Ctx) -> ApiResult {
 
 /// Admin reopens a cadre's month.
 pub async fn cadre_reopen(c: &Ctx) -> ApiResult {
-    let ym = year_month(c);
-    let user = c.b("user_id").filter(|v| !v.is_null());
-    let ok_id = user.is_some_and(|v| is_id_str(&js_string(Some(v))));
-    let (Some(ym), true) = (ym, ok_id) else {
+    let (Some(ym), Some(user_id)) = (year_month(c), js_id(c.b("user_id"))) else {
         return fail(400, "Paramètres invalides");
     };
-    let IdParam::Id(user_id) = id_param(user) else {
-        return fail(400, "Valeur invalide");
-    };
+    let user_id = user_id.map_err(|()| ApiError::new(400, "Valeur invalide"))?;
     sqlx::query(
         "INSERT INTO month_locks (user_id, year, month, cadre_validated, cadre_validated_at)
          VALUES ($1, $2, $3, false, NULL)

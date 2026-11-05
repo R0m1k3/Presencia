@@ -95,4 +95,6 @@ jobs:
           context: server
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # org.opencontainers.image.source links the package to this repository.
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

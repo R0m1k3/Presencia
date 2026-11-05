@@ -90,11 +90,23 @@ fn num(v: f64) -> String {
     if s == "-0" { "0".into() } else { s.into() }
 }
 
-/// Greedy word wrap at spaces, as pdfkit's line wrapper does for these texts.
+/// Greedy word wrap at spaces, as pdfkit's line wrapper does for these texts;
+/// a word wider than the line is cut between characters.
 fn wrap(text: &str, size: f64, width: f64) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
+    let mut words: Vec<String> = Vec::new();
     for word in text.split(' ') {
+        let mut piece = String::new();
+        for ch in word.chars() {
+            if !piece.is_empty() && width_of(&format!("{piece}{ch}"), size) > width {
+                words.push(std::mem::take(&mut piece));
+            }
+            piece.push(ch);
+        }
+        words.push(piece);
+    }
+    for word in words {
         let candidate = if line.is_empty() {
             word.to_string()
         } else {
@@ -322,4 +334,15 @@ pub fn build(data: &CompanyMonth) -> Vec<u8> {
         doc.flow(&totals, 10.0, DARK, false);
     }
     doc.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn long_words_are_cut() {
+        let lines = super::wrap(&format!("Nom {}", "W".repeat(80)), 14.0, 515.28);
+        assert!(lines.len() >= 2, "{lines:?}");
+        assert!(lines.iter().all(|l| super::width_of(l, 14.0) <= 515.28));
+        assert_eq!(lines.concat().replace(' ', ""), format!("Nom{}", "W".repeat(80)));
+    }
 }

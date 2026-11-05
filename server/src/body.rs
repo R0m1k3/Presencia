@@ -56,7 +56,15 @@ pub async fn read_json(headers: &HeaderMap, body: Body) -> Result<Value, ApiErro
     {
         return Err(too_large());
     }
-    let bytes = axum::body::to_bytes(body, LIMIT).await.map_err(|_| too_large())?;
+    let bytes = axum::body::to_bytes(body, LIMIT).await.map_err(|e| {
+        let limit = std::error::Error::source(&e).is_some_and(|s| s.is::<http_body_util::LengthLimitError>());
+        // A read error (client gone mid-body) was a 500 in Express too.
+        if limit {
+            too_large()
+        } else {
+            ApiError::Internal(format!("lecture du corps : {e}"))
+        }
+    })?;
     let text = String::from_utf8_lossy(&bytes);
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(&text);
     if text.is_empty() {

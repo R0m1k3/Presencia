@@ -6,7 +6,7 @@ use super::{Ctx, js_date, with_cookie};
 use crate::{
     auth::{hash_password, set_cookie, sign_token},
     error::{ApiError, ApiResult, fail, json_response, ok_json},
-    validate::{IdParam, id_param, is_email, is_id, is_name, js_string, js_trim, password_error, truthy},
+    validate::{is_email, is_id, is_name, js_id, js_trim, password_error, truthy},
 };
 
 type UserRow = (i32, String, String, String, Option<i32>, bool, DateTime<Utc>);
@@ -43,16 +43,12 @@ fn profile(c: &Ctx) -> Result<Profile, ApiError> {
         Some(Value::String(r)) if r == "admin" || r == "cadre" => r.clone(),
         _ => return fail(400, "Rôle invalide"),
     };
-    let company = c.b("company_id").filter(|v| !v.is_null());
-    if role == "cadre" && !crate::validate::is_id_str(&js_string(company.or(Some(&Value::String(String::new()))))) {
-        return fail(400, "Une société doit être attribuée au cadre");
-    }
     let company_id = if role == "admin" {
         Ok(None)
     } else {
-        match id_param(company) {
-            IdParam::Id(id) => Ok(Some(id)),
-            IdParam::Invalid => Err(()),
+        match js_id(c.b("company_id")) {
+            None => return fail(400, "Une société doit être attribuée au cadre"),
+            Some(id) => id.map(Some),
         }
     };
     Ok(Profile {
