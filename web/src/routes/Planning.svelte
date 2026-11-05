@@ -145,7 +145,7 @@
     }
     // Brush shortcuts when the focus is not on a half-day (there, the keys
     // write directly).
-    if (t.closest('[data-k], .menu') || e.ctrlKey || e.metaKey || e.altKey || locked) return;
+    if (t.closest('[data-k], .menu') || e.ctrlKey || e.metaKey || e.altKey || locked || busy) return;
     const n = '1234'.indexOf(e.key);
     if (n >= 0) toggleBrush(STATUSES[n]);
     else if (e.key === '0') toggleBrush('erase');
@@ -221,8 +221,8 @@
       </div>
     {/if}
 
-    {#if !locked}
-      <div class="tools">
+    <div class="tools">
+      {#if !locked && !busy}
         <div class="brush" role="group" aria-label="Pinceau">
           <span class="brush-label"><Brush />Pinceau</span>
           {#each STATUSES as s, i (s)}
@@ -234,11 +234,15 @@
             <Eraser size={16} />Effacer<kbd>0</kbd>
           </button>
         </div>
+      {:else}
+        <span></span>
+      {/if}
         <div class="views" role="group" aria-label="Affichage">
           <button type="button" class="chip" aria-pressed={view === 'grid'} onclick={() => setView('grid')}>Grille</button>
           <button type="button" class="chip" aria-pressed={view === 'list'} onclick={() => setView('list')}>Liste</button>
         </div>
       </div>
+    {#if !locked && !busy}
       <p class="hint desktop">
         {brush
           ? 'Cliquez ou glissez sur les demi-journées pour appliquer le pinceau'
@@ -246,9 +250,10 @@
       </p>
     {/if}
 
-    <Calendar {ym} map={store.map} {locked} {brush} {view} onapply={apply} />
+    <!-- Read-only while a validation is being sent: a write then would be refused (423). -->
+    <Calendar {ym} map={store.map} locked={locked || busy} {brush} {view} onapply={apply} />
 
-    {#if !locked}
+    {#if !locked && !busy}
       <div class="m-brush" role="group" aria-label="Pinceau">
         {#each STATUSES as s (s)}
           <button type="button" class="chip {s}" aria-pressed={brush === s} onclick={() => toggleBrush(s)}>{LABEL[s]}</button>

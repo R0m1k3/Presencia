@@ -4,7 +4,12 @@
   import { days, segments } from '../lib/logic/totals.ts';
   import { LABEL, STATUSES, type Status } from '../lib/logic/status.ts';
 
-  let { counts, filled, total }: { counts?: Record<Status, number>; filled?: number; total: number } = $props();
+  let {
+    counts,
+    filled,
+    total,
+    label,
+  }: { counts?: Record<Status, number>; filled?: number; total: number; /** Spoken text, when the bar does not count half-days. */ label?: string } = $props();
 
   const parts = $derived(
     counts
@@ -15,9 +20,10 @@
         ],
   );
   const text = $derived(
-    counts
+    label ??
+    (counts
       ? STATUSES.filter((s) => counts[s] > 0).map((s) => `${LABEL[s]} ${days(counts[s])} j`).join(', ') || 'Rien de renseigné'
-      : `${filled ?? 0} demi-journées sur ${total}`,
+      : `${filled ?? 0} demi-journées sur ${total}`),
   );
 </script>
 

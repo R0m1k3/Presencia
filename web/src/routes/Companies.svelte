@@ -50,18 +50,25 @@
     }
   }
 
+  /** The company whose deletion is being sent. */
+  let removing = $state<number | null>(null);
+
   async function remove(c: Company) {
     const n = Number(c.active_cadre_count);
-    const text = n
-      ? `${n} cadre${n > 1 ? 's actifs y sont rattachés' : ' actif y est rattaché'}. Supprimer ${c.name} ?`
-      : `Supprimer ${c.name} ?`;
-    if (!(await confirm('Supprimer la société', text, 'Supprimer', true))) return;
+    const who = n ? `${n} cadre${n > 1 ? 's actifs' : ' actif'}, plus les inactifs` : 'Les cadres inactifs';
+    const text =
+      `${who} rattachés à ${c.name} n’auront plus de société, et ses validations mensuelles seront supprimées. ` +
+      'Les saisies des cadres sont conservées.';
+    if (!(await confirm(`Supprimer ${c.name}`, text, 'Supprimer', true))) return;
+    removing = c.id;
     try {
       await api(`/companies/${c.id}`, 'DELETE');
       ok('Société supprimée');
       badge.refresh();
     } catch (e) {
       error(message(e));
+    } finally {
+      removing = null;
     }
     await load();
   }
@@ -93,7 +100,7 @@
                 <td data-label="Créée le">{formatDay(c.created_at)}</td>
                 <td class="actions">
                   <button class="btn small" type="button" onclick={() => open(c)}>Renommer</button>
-                  <button class="btn small danger" type="button" onclick={() => remove(c)}>Supprimer</button>
+                  <button class="btn small danger" type="button" disabled={removing === c.id} onclick={() => remove(c)}>Supprimer</button>
                 </td>
               </tr>
             {/each}

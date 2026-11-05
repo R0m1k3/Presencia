@@ -18,7 +18,8 @@
   import { session } from '../lib/session.svelte.ts';
   import { router, segments, go } from '../lib/router.svelte.ts';
   import { api } from '../lib/api.ts';
-  import { writes } from '../lib/queue.svelte.ts';
+  import { pendingWrites, writes } from '../lib/queue.svelte.ts';
+  import { ok as notify } from '../lib/toast.svelte.ts';
   import { currentYm, ymKey } from '../lib/logic/dates.ts';
   import type { Overview } from '../lib/types.ts';
 
@@ -63,11 +64,17 @@
       .catch(() => {});
   });
 
+  let leaving = $state(false);
   async function logout() {
+    if (leaving) return;
+    leaving = true;
     showMore = false;
+    // Writes still queued are sent first; say so, as it can take a moment.
+    if (pendingWrites() > 0) notify('Enregistrement en cours, déconnexion juste après');
     await writes.idle();
     await api('/auth/logout', 'POST').catch(() => {});
     session.user = null;
+    leaving = false;
     go('/connexion');
   }
 </script>
@@ -90,7 +97,7 @@
       </div>
       <div class="nav">
         <button type="button" onclick={() => (showPassword = true)}><KeyRound />Mon mot de passe</button>
-        <button type="button" onclick={logout}><LogOut />Se déconnecter</button>
+        <button type="button" disabled={leaving} onclick={logout}><LogOut />Se déconnecter</button>
       </div>
     </div>
   </aside>

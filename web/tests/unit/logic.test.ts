@@ -7,7 +7,8 @@ import { apply, effective, snapshot, toRequests, type Change } from '../../src/l
 import { lockState } from '../../src/lib/logic/lock.ts';
 import { countHalves, days, segments, workHalves } from '../../src/lib/logic/totals.ts';
 import { filenameFrom } from '../../src/lib/logic/filename.ts';
-import { COLORS, STATUSES, contrast } from '../../src/lib/logic/status.ts';
+import { readFileSync } from 'node:fs';
+import { STATUSES } from '../../src/lib/logic/status.ts';
 
 const nov = { year: 2026, month: 11 }; // the 1st is a Sunday
 
@@ -76,6 +77,12 @@ test('lock table', () => {
   assert.deepEqual(lockState(asAdmin, true), { locked: false, canValidate: false, canReopen: true, banner: 'cadre-admin' });
   const company = { editable: false, cadreValidated: true, companyValidated: true };
   assert.deepEqual(lockState(company, true), { locked: true, canValidate: false, canReopen: false, banner: 'company' });
+  // The cadre sees the company lock too, validated or not on their side.
+  assert.deepEqual(lockState(company, false), { locked: true, canValidate: false, canReopen: false, banner: 'company' });
+  const companyOnly = { editable: false, cadreValidated: false, companyValidated: true };
+  assert.deepEqual(lockState(companyOnly, false), { locked: true, canValidate: false, canReopen: false, banner: 'company' });
+  // An admin's own validated month stays editable: no « verrouillées » banner.
+  assert.deepEqual(lockState(asAdmin, false), { locked: false, canValidate: false, canReopen: false, banner: 'cadre-own-editable' });
 });
 
 test('totals', () => {
@@ -97,6 +104,27 @@ test('download file name', () => {
   assert.equal(filenameFrom(null, 'presences.pdf'), 'presences.pdf');
 });
 
-test('status colours meet WCAG AA', () => {
-  for (const s of STATUSES) assert.ok(contrast(COLORS[s].fg, COLORS[s].bg) >= 4.5, s);
+/** WCAG relative luminance contrast ratio of two #RRGGBB colours. */
+function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const [r, g, bl] = c.map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+test('app.css colours meet WCAG AA', () => {
+  const css = readFileSync(new URL('../../src/app.css', import.meta.url), 'utf8');
+  const v = (name: string) => {
+    const m = css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`));
+    assert.ok(m, name);
+    return m[1];
+  };
+  for (const s of STATUSES) assert.ok(contrast(v(s), v(`${s}-bg`)) >= 4.5, s);
+  for (const t of ['ink', 'ink-2', 'ink-3']) {
+    assert.ok(contrast(v(t), v('paper')) >= 4.5, t);
+    assert.ok(contrast(v(t), v('bg')) >= 4.5, `${t} sur bg`);
+  }
 });

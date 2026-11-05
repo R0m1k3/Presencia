@@ -104,7 +104,8 @@
       return;
     }
     dragging = false;
-    if (!d.dragged) {
+    // A drag that came back to where it started is a click.
+    if (!d.dragged || selection.length === 1) {
       clearSelection();
       if (brush) onapply([d.key], brushStatus());
       else openMenu(d.key);
@@ -215,7 +216,9 @@
     } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
       wholeDay();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      // Tab leaves the menu: close it and go back to the half-day. (Not on
+      // focusout: after a tap, the browser focuses the tapped cell.)
       e.preventDefault();
       closeMenu();
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
@@ -237,6 +240,23 @@
     node.focus();
   }
 
+  // A click outside the grid and its bar, or Escape from anywhere, drops the selection.
+  $effect(() => {
+    if (!showBar) return;
+    const outside = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.cal, .selbar')) clearSelection();
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    addEventListener('pointerdown', outside, true);
+    addEventListener('keydown', escape);
+    return () => {
+      removeEventListener('pointerdown', outside, true);
+      removeEventListener('keydown', escape);
+    };
+  });
+
   $effect(() => {
     if (!menu) return;
     const close = (e: PointerEvent) => {
@@ -250,7 +270,8 @@
     const { period } = splitKey(k);
     const d = dayOf(k);
     const s = map.get(k);
-    return `${weekdayShort(ym, d)} ${d} ${monthName(ym)}, ${PERIOD_LABEL[period]} : ${s ? LABEL[s] : 'à renseigner'}`;
+    const sel = selected.has(k) ? ', sélectionnée' : '';
+    return `${weekdayShort(ym, d)} ${d} ${monthName(ym)}, ${PERIOD_LABEL[period]} : ${s ? LABEL[s] : 'à renseigner'}${sel}`;
   }
 
   const menuTitle = $derived.by(() => {

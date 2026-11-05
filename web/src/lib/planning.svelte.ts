@@ -15,7 +15,6 @@ type Undo = { before: Change; month: boolean };
 export class PlanningStore implements QueueOwner {
   data = $state<Planning | null>(null);
   map = $state.raw<Map<HalfKey, Status>>(new Map());
-  loading = $state(true);
   loadError = $state<string | null>(null);
   /** A write failed and the reload did not succeed yet: the screen may show unsaved entries. */
   stale = $state(false);
@@ -36,7 +35,6 @@ export class PlanningStore implements QueueOwner {
 
   async load() {
     const req = ++this.#req;
-    this.loading = true;
     // Writes still queued (this screen's or a previous one's) go first, so
     // the answer includes them.
     await writes.idle();
@@ -55,8 +53,6 @@ export class PlanningStore implements QueueOwner {
       this.stale = false;
     } catch (e) {
       if (req === this.#req) this.loadError = message(e);
-    } finally {
-      if (req === this.#req) this.loading = false;
     }
   }
 
@@ -113,7 +109,10 @@ export class PlanningStore implements QueueOwner {
           ? 'effacées'
           : 'modifiées';
     const text = `${n} demi-journée${n > 1 ? 's' : ''} ${what}`;
-    toasts.show('undo', text, { label: 'Annuler', run: () => this.undo() });
+    // Ctrl+Z works as long as the offer is on screen, not minutes later.
+    toasts.show('undo', text, { label: 'Annuler', run: () => this.undo() }, () => {
+      if (this.#undo === u) this.#undo = null;
+    });
   }
 
   /** One request per kind of write: upserts, then clears. */

@@ -13,12 +13,17 @@ let next = 1;
 class Toasts {
   list = $state<Toast[]>([]);
 
-  show(kind: Toast['kind'], text: string, action?: Toast['action']): number {
+  /** `onexpire` runs only if the toast times out (not if replaced or dismissed). */
+  show(kind: Toast['kind'], text: string, action?: Toast['action'], onexpire?: () => void): number {
     const id = next++;
     // One undo offer at a time: a new action replaces the previous one.
     if (kind === 'undo') this.list = this.list.filter((t) => t.kind !== 'undo');
     this.list = [...this.list, { id, kind, text, action }];
-    setTimeout(() => this.dismiss(id), DURATION[kind]);
+    setTimeout(() => {
+      if (!this.list.some((t) => t.id === id)) return;
+      this.dismiss(id);
+      onexpire?.();
+    }, DURATION[kind]);
     return id;
   }
 

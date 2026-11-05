@@ -115,8 +115,10 @@ async fn handle(State(st): State<AppState>, ConnectInfo(peer): ConnectInfo<Socke
     res
 }
 
-/// The policy the old nginx frontend sent (its security-headers.conf).
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
+/// Same-origin only. No 'unsafe-inline' for styles: the Svelte build ships one
+/// CSS file, and its `style:` bindings (bar widths, menu position) go through
+/// the DOM style API, which CSP does not restrict.
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; \
                    img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; \
                    base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 

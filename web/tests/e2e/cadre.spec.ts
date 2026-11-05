@@ -1,4 +1,4 @@
-import { test, expect, login, axe, mobileLayout, seed, CADRE_PASSWORD } from './fixtures.ts';
+import { test, expect, login, axe, mobileLayout, seed, signedOut, CADRE_PASSWORD } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 
 const YM = '2026-03'; // a past month: the 1st is a Sunday, 22 working days
@@ -158,6 +158,35 @@ test('connexion et déconnexion', async ({ watched: page, request }, info) => {
     await page.getByRole('button', { name: 'Se déconnecter' }).click();
   }
   await expect(page.getByLabel('E-mail')).toBeVisible();
+  signedOut(page);
   await page.goto('/#/historique');
   await expect(page.getByLabel('E-mail')).toBeVisible();
+});
+
+test('cadre au doigt : toucher ouvre le menu, le pinceau écrit', async ({ watched: page, request }, info) => {
+  test.skip(info.project.name !== 'mobile', 'parcours tactile, à 390 px');
+  const { cadre, email } = await seed(request, 'touch');
+  await login(page, email, CADRE_PASSWORD);
+  await page.goto(`/#/planning/${YM}`);
+  await expect(page.getByRole('heading', { name: /Mars 2026/ })).toBeVisible();
+
+  // A tap without a brush opens the menu (pointerType touch).
+  await half(page, 2, 'matin').tap();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name: /RTT/ }).tap();
+  await expect(half(page, 2, 'matin')).toHaveText('RTT');
+
+  // With a brush, each tap writes.
+  await page.locator('.m-brush').getByRole('button', { name: 'Congé' }).tap();
+  await half(page, 3, 'matin').tap();
+  await half(page, 3, 'après-midi').tap();
+  await expect(half(page, 3, 'après-midi')).toHaveText('Congé');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(3);
+
+  // The undo offer sits above the brush bar and works with a tap.
+  await page.getByRole('button', { name: /Annuler/ }).tap();
+  await expect(half(page, 3, 'après-midi')).toHaveText('après-midi');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(2);
 });

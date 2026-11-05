@@ -1,3 +1,11 @@
+<script lang="ts" module>
+  const KEY = 'presencia.company';
+  /** The company filter chosen earlier in this session, shared by Plannings and Utilisateurs. */
+  export function storedCompany(): string {
+    return sessionStorage.getItem(KEY) ?? 'all';
+  }
+</script>
+
 <script lang="ts">
   import Search from '@lucide/svelte/icons/search';
   import type { Company } from '../lib/types.ts';
@@ -7,6 +15,10 @@
     company = $bindable('all'),
     query = $bindable(''),
   }: { companies: Company[]; company?: string; query?: string } = $props();
+
+  $effect(() => {
+    sessionStorage.setItem(KEY, company);
+  });
 </script>
 
 <div class="filters">

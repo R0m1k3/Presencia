@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { api, message } from '../lib/api.ts';
   import { session } from '../lib/session.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -25,8 +26,10 @@
       go(back && back !== '/connexion' ? back : '/', true);
     } catch (e) {
       err = message(e);
-      password = '';
-      pwdInput?.focus();
+      busy = false;
+      // Plan §4: the password stays, selected, so a typo is retyped in one go.
+      await tick();
+      pwdInput?.select();
     } finally {
       busy = false;
     }
