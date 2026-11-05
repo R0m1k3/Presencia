@@ -11,6 +11,7 @@
   import { currentYm, monthName, monthTitle, ymKey } from '../lib/logic/dates.ts';
   import { emptyWorkHalves, toMap } from '../lib/logic/grid.ts';
   import { countHalves, days, percent, workHalves } from '../lib/logic/totals.ts';
+  import { isReady } from '../lib/logic/people.ts';
   import type { Overview, Planning } from '../lib/types.ts';
 
   const ym = currentYm();
@@ -19,6 +20,7 @@
   let mine = $state<Planning | null>(null);
   let overview = $state<Overview | null>(null);
   let err = $state('');
+  let overviewErr = $state('');
 
   const map = $derived(mine ? toMap(mine.entries) : new Map());
   const counts = $derived(countHalves(map.values()));
@@ -34,10 +36,12 @@
       const qs = `year=${ym.year}&month=${ym.month}`;
       const [p, o] = await Promise.all([
         api<Planning>(`/attendance?${qs}`),
-        session.isAdmin ? api<Overview>(`/validations/overview?${qs}`) : Promise.resolve(null),
+        // A failing overview must not hide the admin's own figures.
+        session.isAdmin ? api<Overview>(`/validations/overview?${qs}`).catch((e) => ((overviewErr = message(e)), null)) : Promise.resolve(null),
       ]);
       mine = p;
       overview = o;
+      if (o) overviewErr = '';
     } catch (e) {
       err = message(e);
     }
@@ -45,7 +49,7 @@
   void load();
 
   const ready = $derived(
-    overview?.companies.filter((c) => !c.companyValidated && c.activeCadres > 0 && c.validatedCadres === c.activeCadres) ?? [],
+    overview?.companies.filter(isReady) ?? [],
   );
   const late = $derived(overview?.companies.filter((c) => !c.companyValidated && c.validatedCadres < c.activeCadres) ?? []);
 </script>
@@ -64,7 +68,10 @@
 
   {#if err}
     <div class="panel empty" role="alert"><p>{err}</p><button class="btn" type="button" onclick={load}>Réessayer</button></div>
-  {:else if mine && (!session.isAdmin || overview)}
+  {:else if mine}
+    {#if session.isAdmin && !overview}
+      <div class="panel empty" role="alert"><p>Les chiffres des sociétés n’ont pas pu être chargés. {overviewErr}</p><button class="btn" type="button" onclick={load}>Réessayer</button></div>
+    {/if}
     <div class="tiles">
       {#if session.isAdmin && overview}
         <div class="panel tile"><p class="tile-label">À valider</p><p class="tile-value">{overview.pendingCompanies}</p><p class="tile-hint">sociétés pas encore validées</p></div>
@@ -91,14 +98,14 @@
           {#each ready.slice(0, 3) as c (c.id)}
             <a class="shortcut" href="#/validation/{key}/{c.id}">
               <span class="shortcut-icon"><CircleCheck /></span>
-              <span class="grow"><span class="cell-main">{c.name} est prête à valider</span><br /><span class="cell-sub">Les {c.activeCadres} cadres actifs ont validé leur mois</span></span>
+              <span class="grow"><span class="cell-main">{c.name} est prête à valider</span><br /><span class="cell-sub">{c.activeCadres > 1 ? `Les ${c.activeCadres} cadres actifs ont validé leur mois` : 'Le cadre actif a validé son mois'}</span></span>
               <ChevronRight />
             </a>
           {/each}
           {#each late.slice(0, 3) as c (c.id)}
             <a class="shortcut" href="#/validation/{key}/{c.id}">
               <span class="shortcut-icon"><ListChecks /></span>
-              <span class="grow"><span class="cell-main">{c.name} : {c.activeCadres - c.validatedCadres} cadre{c.activeCadres - c.validatedCadres > 1 ? 's' : ''} en retard</span><br /><span class="cell-sub">{c.validatedCadres}/{c.activeCadres} ont validé leur mois</span></span>
+              <span class="grow"><span class="cell-main">{c.name} : {c.activeCadres - c.validatedCadres} cadre{c.activeCadres - c.validatedCadres > 1 ? 's' : ''} en retard</span><br /><span class="cell-sub">{c.validatedCadres} sur {c.activeCadres} {c.validatedCadres > 1 ? 'ont validé leur' : 'a validé son'} mois</span></span>
               <ChevronRight />
             </a>
           {/each}
@@ -133,13 +140,12 @@
             <thead><tr><th>Société</th><th>Cadres validés</th><th>Statut</th><th></th></tr></thead>
             <tbody>
               {#each overview.companies as c (c.id)}
-                {@const isReady = c.activeCadres > 0 && c.validatedCadres === c.activeCadres}
                 <tr>
                   <td class="cell-main">{c.name}</td>
                   <td data-label="Cadres validés">{c.validatedCadres}/{c.activeCadres}</td>
                   <td>
-                    <span class="tag" class:done={c.companyValidated} class:wait={!c.companyValidated && isReady}>
-                      {c.companyValidated ? 'Validée' : isReady ? 'Prête à valider' : 'En cours'}
+                    <span class="tag" class:done={c.companyValidated} class:wait={isReady(c)}>
+                      {c.companyValidated ? 'Validée' : isReady(c) ? 'Prête à valider' : 'En cours'}
                     </span>
                   </td>
                   <td class="actions"><a class="btn small" href="#/validation/{key}/{c.id}">Ouvrir</a></td>

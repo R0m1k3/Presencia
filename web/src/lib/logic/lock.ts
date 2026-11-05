@@ -7,7 +7,7 @@ export type PlanningFlags = {
   companyValidated: boolean;
 };
 
-export type Banner = 'none' | 'cadre-own' | 'cadre-admin' | 'company';
+export type Banner = 'none' | 'cadre-own' | 'cadre-own-editable' | 'cadre-admin' | 'company';
 
 export function lockState(f: PlanningFlags, viewingOther: boolean) {
   return {
@@ -19,7 +19,9 @@ export function lockState(f: PlanningFlags, viewingOther: boolean) {
       : f.cadreValidated
         ? viewingOther
           ? 'cadre-admin'
-          : 'cadre-own'
+          : f.editable
+            ? 'cadre-own-editable' // an admin's own validated month stays editable
+            : 'cadre-own'
         : 'none') as Banner,
   };
 }

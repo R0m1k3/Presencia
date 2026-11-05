@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "erasableSyntaxOnly": true
+  },
+  "include": ["tests/**/*.ts", "playwright.config.ts", "src/lib/logic/**/*.ts"]
+}

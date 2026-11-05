@@ -144,7 +144,7 @@ Si vous changez les identifiants admin dans `.env` *après* un premier démarrag
 - La dernière action s'annule avec le bouton « Annuler » du message, ou Ctrl+Z.
 - Dans le sélecteur d'une demi-journée : touches **1** à **4** pour les statuts, **⌫** pour effacer, **↵** pour appliquer à la journée entière.
 - En fin de mois, cliquer sur **« Valider le mois »** : les saisies sont alors verrouillées et transmises pour validation à l'administrateur. Si une correction est nécessaire après coup, il faut qu'un administrateur réouvre le mois.
-- **Historique** : retrouver les mois précédents et leurs totaux, et les rouvrir en lecture.
+- **Historique** : retrouver les mois précédents et leurs totaux, et ouvrir leur planning (modifiable tant que le mois n'est pas validé).
 
 ## Sécurité
 

@@ -1,7 +1,8 @@
 <script lang="ts">
   import Plus from '@lucide/svelte/icons/plus';
   import Dialog from '../components/Dialog.svelte';
-  import CompanyFilter from '../components/CompanyFilter.svelte';
+  import CompanyFilter, { storedCompany } from '../components/CompanyFilter.svelte';
+  import { search } from '../lib/logic/people.ts';
   import { api, message } from '../lib/api.ts';
   import { confirm } from '../lib/confirm.svelte.ts';
   import { session } from '../lib/session.svelte.ts';
@@ -9,7 +10,7 @@
   import type { Company, Role, UserRow } from '../lib/types.ts';
 
   let companies = $state<Company[]>([]);
-  let company = $state(sessionStorage.getItem('presencia.company') ?? 'all');
+  let company = $state(storedCompany());
   let query = $state('');
   let list = $state<UserRow[] | null>(null);
   let err = $state('');
@@ -27,7 +28,13 @@
   let resetFor = $state<UserRow | null>(null);
   let rPassword = $state('');
 
-  api<Company[]>('/companies').then((c) => (companies = c)).catch(() => {});
+  let companiesLoaded = $state(false);
+  api<Company[]>('/companies')
+    .then((c) => {
+      companies = c;
+      companiesLoaded = true;
+    })
+    .catch(() => {});
 
   let req = 0;
   async function load(filter: string) {
@@ -41,14 +48,11 @@
     }
   }
   $effect(() => {
-    sessionStorage.setItem('presencia.company', company);
     void load(company);
   });
 
-  const shown = $derived.by(() => {
-    const q = query.trim().toLowerCase();
-    return (list ?? []).filter((u) => !q || u.full_name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-  });
+  const shown = $derived(search(list ?? [], query));
+
 
   function open(u: UserRow | 'new') {
     editing = u;
@@ -97,8 +101,11 @@
     }
   }
 
+  /** The account being activated or deactivated. */
+  let toggling = $state<number | null>(null);
   async function toggle(u: UserRow) {
     if (u.active && !(await confirm('Désactiver le compte', `${u.full_name} ne pourra plus se connecter.`, 'Désactiver', true))) return;
+    toggling = u.id;
     try {
       await api(`/users/${u.id}`, 'PUT', {
         full_name: u.full_name, email: u.email, role: u.role, company_id: u.company_id, active: !u.active,
@@ -106,8 +113,10 @@
       ok(u.active ? `Compte désactivé : ${u.full_name}` : `Compte activé : ${u.full_name}`);
     } catch (e) {
       error(message(e));
+    } finally {
+      await load(company);
+      toggling = null;
     }
-    await load(company);
   }
 
   async function resetPassword(e: SubmitEvent) {
@@ -136,7 +145,7 @@
       <p class="page-sub">{list ? `${shown.length} compte${shown.length > 1 ? 's' : ''}` : ' '}</p>
     </div>
     <div class="row">
-      <CompanyFilter {companies} bind:company bind:query />
+      <CompanyFilter {companies} loaded={companiesLoaded} bind:company bind:query />
       <button class="btn primary" type="button" onclick={() => open('new')}><Plus />Nouvel utilisateur</button>
     </div>
   </header>
@@ -161,7 +170,7 @@
                   <button class="btn small" type="button" onclick={() => open(u)}>Modifier</button>
                   <button class="btn small" type="button" onclick={() => { resetFor = u; rPassword = ''; formErr = ''; }}>Mot de passe</button>
                   {#if !self(u)}
-                    <button class="btn small" class:danger={u.active} type="button" onclick={() => toggle(u)}>{u.active ? 'Désactiver' : 'Activer'}</button>
+                    <button class="btn small" class:danger={u.active} type="button" disabled={toggling === u.id} onclick={() => toggle(u)}>{u.active ? 'Désactiver' : 'Activer'}</button>
                   {/if}
                 </td>
               </tr>

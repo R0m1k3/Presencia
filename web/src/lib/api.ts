@@ -18,19 +18,36 @@ export function setUnauthorizedHandler(fn: () => void) {
 }
 
 const TIMEOUT_MS = 15_000;
+/** Exports build a whole month for a company: give them longer. */
+const EXPORT_TIMEOUT_MS = 120_000;
 
-async function send(path: string, method: string, body: unknown): Promise<Response> {
+async function send(path: string, method: string, body: unknown, timeout = TIMEOUT_MS): Promise<Response> {
   try {
     return await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
       headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeout),
     });
   } catch (e) {
-    const timeout = e instanceof DOMException && e.name === 'TimeoutError';
-    throw new ApiError(0, timeout ? 'Le serveur ne répond pas. Réessayez.' : 'Connexion au serveur impossible.');
+    throw transport(e);
+  }
+}
+
+/** A network failure or a timeout (also while reading the body) in French. */
+function transport(e: unknown): ApiError {
+  const timeout = e instanceof DOMException && e.name === 'TimeoutError';
+  return new ApiError(0, timeout ? 'Le serveur ne répond pas. Réessayez.' : 'Connexion au serveur impossible.');
+}
+
+/** Reads a body inside the same error handling as the request itself. */
+async function read<T>(res: Response, how: (r: Response) => Promise<T>): Promise<T> {
+  try {
+    return await how(res);
+  } catch (e) {
+    if (e instanceof SyntaxError) throw new ApiError(res.status, 'Réponse du serveur illisible.');
+    throw transport(e);
   }
 }
 
@@ -50,14 +67,14 @@ async function fail(res: Response, path: string): Promise<never> {
 export async function api<T = unknown>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const res = await send(path, method, body);
   if (!res.ok) return fail(res, path);
-  return (await res.json()) as T;
+  return read(res, (r) => r.json() as Promise<T>);
 }
 
 /** Downloads an export: the blob route keeps the API's error message. */
 export async function download(path: string, fallback: string): Promise<void> {
-  const res = await send(path, 'GET', undefined);
+  const res = await send(path, 'GET', undefined, EXPORT_TIMEOUT_MS);
   if (!res.ok) return fail(res, path);
-  const blob = await res.blob();
+  const blob = await read(res, (r) => r.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

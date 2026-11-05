@@ -67,13 +67,27 @@
     anchor = null;
   }
 
+  /**
+   * An action of the selection bar (undefined: just cancel). The focus goes
+   * back to the grid, so the digits typed next write there instead of
+   * picking a brush.
+   */
+  function applySelection(status: Status | null | undefined) {
+    if (status !== undefined) onapply(selection, status);
+    clearSelection();
+    root.querySelector<HTMLElement>(`[data-k="${focusKey}"]`)?.focus();
+  }
+
   // ---- pointer: mouse, pen, and touch when a brush is active ----
   let down: { key: HalfKey; type: string; dragged: boolean } | null = null;
 
   function onpointerdown(e: PointerEvent) {
     if (locked || e.button !== 0) return;
     const k = (e.target as HTMLElement).closest<HTMLElement>('[data-k]')?.dataset.k as HalfKey | undefined;
-    if (!k) return;
+    if (!k) {
+      clearSelection(); // a click in the grid but not on a half-day
+      return;
+    }
     menu = null;
     down = { key: k, type: e.pointerType, dragged: false };
     if (e.pointerType === 'touch' && !brush) return; // native scroll; a tap opens the menu
@@ -81,14 +95,17 @@
     focusKey = k;
     (document.querySelector(`[data-k="${k}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
     anchor = k;
+    lastMove = k;
     selection = [k];
     dragging = true;
   }
 
+  let lastMove: HalfKey | null = null;
   function onpointermove(e: PointerEvent) {
     if (!dragging || !anchor) return;
     const k = keyAt(e.clientX, e.clientY);
-    if (!k) return;
+    if (!k || k === lastMove) return; // still on the same half-day
+    lastMove = k;
     if (down && k !== down.key) down.dragged = true;
     selection = selectRange(ym, anchor, k);
   }
@@ -104,7 +121,8 @@
       return;
     }
     dragging = false;
-    if (!d.dragged) {
+    // A drag that came back to where it started is a click.
+    if (!d.dragged || selection.length === 1) {
       clearSelection();
       if (brush) onapply([d.key], brushStatus());
       else openMenu(d.key);
@@ -215,7 +233,9 @@
     } else if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'BUTTON') {
       e.preventDefault();
       wholeDay();
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
+      // Tab leaves the menu: close it and go back to the half-day. (Not on
+      // focusout: after a tap, the browser focuses the tapped cell.)
       e.preventDefault();
       closeMenu();
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
@@ -237,6 +257,23 @@
     node.focus();
   }
 
+  // A click outside the grid and its bar, or Escape from anywhere, drops the selection.
+  $effect(() => {
+    if (!showBar) return;
+    const outside = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest('.cal, .selbar')) clearSelection();
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    addEventListener('pointerdown', outside, true);
+    addEventListener('keydown', escape);
+    return () => {
+      removeEventListener('pointerdown', outside, true);
+      removeEventListener('keydown', escape);
+    };
+  });
+
   $effect(() => {
     if (!menu) return;
     const close = (e: PointerEvent) => {
@@ -250,7 +287,8 @@
     const { period } = splitKey(k);
     const d = dayOf(k);
     const s = map.get(k);
-    return `${weekdayShort(ym, d)} ${d} ${monthName(ym)}, ${PERIOD_LABEL[period]} : ${s ? LABEL[s] : 'à renseigner'}`;
+    const sel = selected.has(k) ? ', sélectionnée' : '';
+    return `${weekdayShort(ym, d)} ${d} ${monthName(ym)}, ${PERIOD_LABEL[period]} : ${s ? LABEL[s] : 'à renseigner'}${sel}`;
   }
 
   const menuTitle = $derived.by(() => {
@@ -317,10 +355,10 @@
   <div class="selbar" role="toolbar" aria-label="Appliquer à la sélection">
     <span>{selection.length} demi-journées</span>
     {#each STATUSES as s (s)}
-      <button type="button" onclick={() => { onapply(selection, s); clearSelection(); }}>{LABEL[s]}</button>
+      <button type="button" onclick={() => applySelection(s)}>{LABEL[s]}</button>
     {/each}
-    <button type="button" onclick={() => { onapply(selection, null); clearSelection(); }}>Effacer</button>
-    <button type="button" class="close" aria-label="Annuler la sélection" onclick={clearSelection}><X size={16} /></button>
+    <button type="button" onclick={() => applySelection(null)}>Effacer</button>
+    <button type="button" class="close" aria-label="Annuler la sélection" onclick={() => applySelection(undefined)}><X size={16} /></button>
   </div>
 {/if}
 

@@ -18,7 +18,8 @@
   import { session } from '../lib/session.svelte.ts';
   import { router, segments, go } from '../lib/router.svelte.ts';
   import { api } from '../lib/api.ts';
-  import { writes } from '../lib/queue.svelte.ts';
+  import { pendingWrites, writes } from '../lib/queue.svelte.ts';
+  import { ok as notify } from '../lib/toast.svelte.ts';
   import { currentYm, ymKey } from '../lib/logic/dates.ts';
   import type { Overview } from '../lib/types.ts';
 
@@ -63,11 +64,17 @@
       .catch(() => {});
   });
 
+  let leaving = $state(false);
   async function logout() {
+    if (leaving) return;
+    leaving = true;
     showMore = false;
+    // Writes still queued are sent first; say so, as it can take a moment.
+    if (pendingWrites() > 0) notify('Enregistrement en cours, déconnexion juste après');
     await writes.idle();
     await api('/auth/logout', 'POST').catch(() => {});
     session.user = null;
+    leaving = false;
     go('/connexion');
   }
 </script>
@@ -79,7 +86,7 @@
       {#each items as it (it.key)}
         <a href={it.href} aria-current={section === it.key ? 'page' : undefined}>
           <it.icon />{it.label}
-          {#if it.badge}<span class="badge" aria-label="{it.badge} en attente">{it.badge}</span>{/if}
+          {#if it.badge}<span class="badge" aria-hidden="true">{it.badge}</span><span class="visually-hidden">, {it.badge} en attente</span>{/if}
         </a>
       {/each}
     </nav>
@@ -90,7 +97,7 @@
       </div>
       <div class="nav">
         <button type="button" onclick={() => (showPassword = true)}><KeyRound />Mon mot de passe</button>
-        <button type="button" onclick={logout}><LogOut />Se déconnecter</button>
+        <button type="button" disabled={leaving} onclick={logout}><LogOut />{leaving ? 'Déconnexion…' : 'Se déconnecter'}</button>
       </div>
     </div>
   </aside>
@@ -100,7 +107,7 @@
   <nav class="tabbar" aria-label="Navigation">
     {#each tabs as it (it.key)}
       <a href={it.href} aria-current={section === it.key ? 'page' : undefined}>
-        <span class="tab-icon"><it.icon />{#if it.badge}<span class="dot" aria-label="{it.badge} en attente"></span>{/if}</span>{it.short}
+        <span class="tab-icon"><it.icon />{#if it.badge}<span class="dot" aria-hidden="true"></span>{/if}</span>{it.short}{#if it.badge}<span class="visually-hidden">, {it.badge} en attente</span>{/if}
       </a>
     {/each}
     <button type="button" aria-current={more.some((m) => m.key === section) ? 'page' : undefined} onclick={() => (showMore = true)}>

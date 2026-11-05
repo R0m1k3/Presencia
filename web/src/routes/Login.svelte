@@ -25,8 +25,8 @@
       go(back && back !== '/connexion' ? back : '/', true);
     } catch (e) {
       err = message(e);
-      password = '';
-      pwdInput?.focus();
+      // Plan §4: the password stays, selected, so a typo is retyped in one go.
+      pwdInput?.select();
     } finally {
       busy = false;
     }

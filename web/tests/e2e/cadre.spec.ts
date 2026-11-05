@@ -1,4 +1,4 @@
-import { test, expect, login, axe, mobileLayout, seed, CADRE_PASSWORD } from './fixtures.ts';
+import { test, expect, login, axe, mobileLayout, seed, signedOut, CADRE_PASSWORD } from './fixtures.ts';
 import type { APIRequestContext, Page } from '@playwright/test';
 
 const YM = '2026-03'; // a past month: the 1st is a Sunday, 22 working days
@@ -95,6 +95,10 @@ test('cadre : saisie, pinceau, glisser, annulation, remplissage, validation', as
   await expect(page.getByText(/saisies verrouillées/)).toBeVisible();
   await expect(page.getByRole('group', { name: 'Pinceau' })).toHaveCount(0);
   await expect(half(page, 16, 'matin')).toHaveAttribute('aria-disabled', 'true');
+  if (info.project.name === 'desktop') {
+    // The view switch stays available on a locked month.
+    await expect(page.getByRole('group', { name: 'Affichage' })).toBeVisible();
+  }
   await axe(page);
 
   // History lists the month.
@@ -158,6 +162,55 @@ test('connexion et déconnexion', async ({ watched: page, request }, info) => {
     await page.getByRole('button', { name: 'Se déconnecter' }).click();
   }
   await expect(page.getByLabel('E-mail')).toBeVisible();
+  signedOut(page);
   await page.goto('/#/historique');
   await expect(page.getByLabel('E-mail')).toBeVisible();
+});
+
+test('cadre au doigt : toucher ouvre le menu, le pinceau écrit', async ({ watched: page, request }, info) => {
+  test.skip(info.project.name !== 'mobile', 'parcours tactile, à 390 px');
+  const { cadre, email } = await seed(request, 'touch');
+  await login(page, email, CADRE_PASSWORD);
+  await page.goto(`/#/planning/${YM}`);
+  await expect(page.getByRole('heading', { name: /Mars 2026/ })).toBeVisible();
+
+  // A tap without a brush opens the menu (pointerType touch).
+  await half(page, 2, 'matin').tap();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await menu.getByRole('menuitem', { name: /RTT/ }).tap();
+  await expect(half(page, 2, 'matin')).toHaveText('RTT');
+
+  // With a brush, each tap writes.
+  await page.locator('.m-brush').getByRole('button', { name: 'Congé' }).tap();
+  await half(page, 3, 'matin').tap();
+  await half(page, 3, 'après-midi').tap();
+  await expect(half(page, 3, 'après-midi')).toHaveText('Congé');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(3);
+
+  // A finger drag with the brush paints every half-day it crosses
+  // (pointer events as the browser sends them for a touch).
+  await page.evaluate(() => {
+    const at = (k: string) => {
+      const r = document.querySelector(`[data-k="${k}"]`)!.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    const fire = (type: string, k: string, target: EventTarget) => {
+      const { x, y } = at(k);
+      const el = type === 'pointerup' ? target : document.elementFromPoint(x, y)!;
+      el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', isPrimary: true, button: 0, clientX: x, clientY: y }));
+    };
+    fire('pointerdown', '2026-03-04|AM', window);
+    fire('pointermove', '2026-03-04|PM', window);
+    fire('pointermove', '2026-03-05|PM', window);
+    fire('pointerup', '2026-03-05|PM', window);
+  });
+  await expect(half(page, 5, 'après-midi')).toHaveText('Congé');
+  await expect(half(page, 4, 'après-midi')).toHaveText('Congé');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(7);
+  // The undo offer sits above the brush bar and works with a tap.
+  await page.getByRole('button', { name: /Annuler/ }).tap();
+  await expect(half(page, 5, 'après-midi')).toHaveText('après-midi');
+  await expect.poll(async () => (await entries(request, cadre.id)).length).toBe(3);
 });

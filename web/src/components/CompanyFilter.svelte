@@ -1,12 +1,29 @@
+<script lang="ts" module>
+  const KEY = 'presencia.company';
+  /** The company filter chosen earlier in this session, shared by Plannings and Utilisateurs. */
+  export function storedCompany(): string {
+    return sessionStorage.getItem(KEY) ?? 'all';
+  }
+</script>
+
 <script lang="ts">
   import Search from '@lucide/svelte/icons/search';
   import type { Company } from '../lib/types.ts';
 
   let {
     companies,
+    loaded,
     company = $bindable('all'),
     query = $bindable(''),
-  }: { companies: Company[]; company?: string; query?: string } = $props();
+  }: { companies: Company[]; /** `companies` came from the server. */ loaded: boolean; company?: string; query?: string } = $props();
+
+  $effect(() => {
+    sessionStorage.setItem(KEY, company);
+  });
+  // A filter on a company that no longer exists (deleted since) would show an empty list.
+  $effect(() => {
+    if (loaded && company !== 'all' && !companies.some((c) => String(c.id) === company)) company = 'all';
+  });
 </script>
 
 <div class="filters">

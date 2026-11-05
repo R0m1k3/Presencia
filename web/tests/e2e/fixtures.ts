@@ -4,6 +4,9 @@ import AxeBuilder from '@axe-core/playwright';
 export const ADMIN = { email: process.env.ADMIN_EMAIL ?? 'admin@presencia.local', password: process.env.ADMIN_PASSWORD ?? 'admin-password' };
 export const CADRE_PASSWORD = 'cadre-password-e2e';
 
+/** Pages that went through login(): a 401 there is a real problem. */
+const signedIn = new WeakSet<Page>();
+
 /** Per test: fails on any request to another host and on console errors. */
 export const test = base.extend<{ watched: Page }>({
   watched: async ({ page, baseURL }, use) => {
@@ -15,8 +18,9 @@ export const test = base.extend<{ watched: Page }>({
     });
     page.on('pageerror', (e) => problems.push(`erreur JS : ${e.message}`));
     page.on('console', (m) => {
-      // The startup GET /api/auth/me answers 401 before signing in.
-      if (m.type() === 'error' && !/status of 401/.test(m.text())) problems.push(`console : ${m.text()}`);
+      // Only before signing in is a 401 expected (the startup GET /api/auth/me).
+      const early401 = !signedIn.has(page) && /status of 401/.test(m.text());
+      if (m.type() === 'error' && !early401) problems.push(`console : ${m.text()}`);
     });
     await use(page);
     expect(problems, problems.join('\n')).toEqual([]);
@@ -30,6 +34,12 @@ export async function login(page: Page, email: string, password: string) {
   await page.getByLabel('Mot de passe').fill(password);
   await page.getByRole('button', { name: 'Se connecter' }).click();
   await expect(page.locator('main')).toBeVisible();
+  signedIn.add(page);
+}
+
+/** After signing out, the next 401s are expected again. */
+export function signedOut(page: Page) {
+  signedIn.delete(page);
 }
 
 export async function axe(page: Page) {

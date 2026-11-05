@@ -9,8 +9,7 @@
     onclose,
     children,
     footer,
-    wide = false,
-  }: { title: string; onclose: () => void; children: Snippet; footer?: Snippet; wide?: boolean } = $props();
+  }: { title: string; onclose: () => void; children: Snippet; footer?: Snippet } = $props();
 
   let dialog: HTMLDialogElement;
   const opener = document.activeElement as HTMLElement | null;
@@ -23,7 +22,6 @@
 
 <dialog
   bind:this={dialog}
-  class:wide
   aria-labelledby="dialog-title"
   oncancel={(e) => {
     e.preventDefault();
@@ -48,7 +46,6 @@
     border: 0; padding: 0; border-radius: var(--r-m); width: min(440px, calc(100vw - 24px));
     box-shadow: 0 16px 48px rgba(17, 24, 39, 0.18); color: var(--ink);
   }
-  dialog.wide { width: min(560px, calc(100vw - 24px)); }
   dialog::backdrop { background: rgba(17, 24, 39, 0.32); }
   .box { padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-4); }
   header { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }

@@ -2,6 +2,7 @@
   import Lock from '@lucide/svelte/icons/lock';
   import { formatStamp } from '../lib/logic/dates.ts';
   import type { Banner } from '../lib/logic/lock.ts';
+  import { session } from '../lib/session.svelte.ts';
 
   let { banner, cadreAt, companyAt }: { banner: Banner; cadreAt: string | null; companyAt: string | null } = $props();
 </script>
@@ -12,10 +13,17 @@
     <div>
       {#if banner === 'company'}
         <b>Mois validé par l’administrateur{companyAt ? ` le ${formatStamp(companyAt)}` : ''}</b>
-        <p>Les saisies sont verrouillées. Une correction demande de réouvrir la société dans Validation.</p>
+        {#if session.isAdmin}
+          <p>Les saisies sont verrouillées. Une correction demande de réouvrir la société dans Validation.</p>
+        {:else}
+          <p>Les saisies sont verrouillées. Pour une correction, adressez-vous à l’administrateur.</p>
+        {/if}
       {:else if banner === 'cadre-own'}
         <b>Mois validé{cadreAt ? ` le ${formatStamp(cadreAt)}` : ''}, saisies verrouillées</b>
         <p>Un administrateur doit réouvrir le mois pour toute correction.</p>
+      {:else if banner === 'cadre-own-editable'}
+        <b>Mois validé{cadreAt ? ` le ${formatStamp(cadreAt)}` : ''}</b>
+        <p>En tant qu’administrateur, vous pouvez encore corriger ce planning.</p>
       {:else}
         <b>Validé par le cadre{cadreAt ? ` le ${formatStamp(cadreAt)}` : ''}</b>
         <p>Vous pouvez encore corriger ce planning, ou réouvrir le mois pour que le cadre le reprenne.</p>

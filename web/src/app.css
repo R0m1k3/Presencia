@@ -66,14 +66,12 @@ h1, h2, h3, p { margin: 0; }
 .page-title { font-size: 28px; line-height: 1.15; font-weight: 500; letter-spacing: -0.01em; }
 .page-sub { color: var(--ink-2); margin-top: var(--sp-1); }
 .section-title { font-size: 17px; font-weight: 500; }
-.muted { color: var(--ink-3); }
 .secondary { color: var(--ink-2); }
 .row { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .spacer { flex: 1; }
 
 /* ---------- Surfaces ---------- */
 .panel { background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-m); }
-.panel-pad { padding: var(--sp-5); }
 .empty { padding: var(--sp-6) var(--sp-5); color: var(--ink-2); text-align: center; }
 
 /* ---------- Buttons ---------- */
@@ -112,8 +110,6 @@ h1, h2, h3, p { margin: 0; }
 .input:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
 .form-error { color: var(--danger); font-size: 14px; }
 .hint { font-size: 13px; color: var(--ink-3); }
-.check { display: flex; align-items: center; gap: var(--sp-2); }
-.check input { width: 18px; height: 18px; accent-color: var(--ink); }
 
 /* ---------- Tags ---------- */
 .tag {
